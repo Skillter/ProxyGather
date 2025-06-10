@@ -9,3 +9,4 @@
 **/*proxies*.json
 
 !**/sites-to-get-proxies-from.txt
+getproxy/proxy-lists/
