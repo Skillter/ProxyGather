@@ -1,7 +1,8 @@
 import re
 import requests
 import argparse
-from typing import List
+from typing import List, Set
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Define the possible patterns for scraping proxies
 # Using a set to automatically handle duplicate patterns
@@ -22,45 +23,70 @@ HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3'
 }
 
-def scrape_proxies(urls: List[str], verbose: bool = False) -> List[str]:
+def extract_proxies_from_text(text: str) -> Set[str]:
     """
-    Scrapes proxy addresses from a list of URLs.
+    Extracts proxies from a string of HTML/text using predefined regex patterns.
 
     Args:
-        urls: A list of URL strings to scrape from.
-        verbose: If True, prints status messages during scraping.
+        text: A string containing the content to search for proxies.
 
     Returns:
-        A list of unique proxy strings in 'ip:port' format.
+        A set of unique proxy strings in 'ip:port' format found in the text.
     """
-    all_proxies = set() # Use a set to automatically handle duplicates
+    found_proxies = set()
+    for pattern in PATTERNS:
+        matches = re.findall(pattern, text)
+        if matches:
+            for match in matches:
+                ip, port = match
+                proxy = f'{ip}:{port}'
+                found_proxies.add(proxy)
+    return found_proxies
 
-    for url in urls:
+
+def _fetch_and_extract(url: str, verbose: bool = False) -> Set[str]:
+    """Helper function to fetch one URL via GET and extract proxies. Runs in a thread."""
+    if verbose:
+        print(f"[INFO] Scraping proxies from: {url}")
+    try:
+        response = requests.get(url, headers=HEADERS, timeout=15)
+        response.raise_for_status()
+
+        # --- REFACTORED ---
+        # Use the new, reusable extraction function
+        proxies_found = extract_proxies_from_text(response.text)
+        
         if verbose:
-            print(f"[INFO] Scraping proxies from: {url}")
-        try:
-            response = requests.get(url, headers=HEADERS, timeout=10)
-            response.raise_for_status() # Raise an exception for bad status codes (4xx or 5xx)
+            if proxies_found:
+                 print(f"[INFO]   ... Found {len(proxies_found)} unique proxies on {url}")
+            else:
+                 print(f"[WARN]   ... Could not find any proxies on {url}")
+        
+        return proxies_found
 
-            found_on_page = False
-            for pattern in PATTERNS:
-                matches = re.findall(pattern, response.text)
-                if matches:
-                    if verbose:
-                        print(f"[INFO]   ... Found {len(matches)} proxies using pattern: {pattern}")
-                    for match in matches:
-                        ip, port = match
-                        proxy = f'{ip}:{port}'
-                        all_proxies.add(proxy)
-                    found_on_page = True
-            
-            if not found_on_page and verbose:
-                print(f"[WARN]   ... Could not find any proxies on {url}")
+    except requests.exceptions.RequestException as e:
+        if verbose:
+            print(f"[ERROR] Could not fetch URL {url}: {e}")
+    
+    return set() # Return an empty set on failure
 
-        except requests.exceptions.RequestException as e:
-            if verbose:
-                print(f"[ERROR] Could not fetch URL {url}: {e}")
-            continue # Move to the next URL
+
+def scrape_proxies(urls: List[str], verbose: bool = False, max_workers: int = 10) -> List[str]:
+    """
+    Scrapes proxy addresses concurrently from a list of URLs using GET requests.
+    (Function body remains the same as before, no changes needed here)
+    """
+    all_proxies = set()
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_to_url = {executor.submit(_fetch_and_extract, url, verbose): url for url in urls}
+        for future in as_completed(future_to_url):
+            try:
+                proxies_from_url = future.result()
+                all_proxies.update(proxies_from_url)
+            except Exception as exc:
+                url = future_to_url[future]
+                if verbose:
+                    print(f"[ERROR] An exception occurred while processing {url}: {exc}")
 
     return sorted(list(all_proxies))
 
