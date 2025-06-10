@@ -1,0 +1,11 @@
+**/__pycache__
+**/throw-away-github-acc.txt
+**/GithubScanner.py
+**/*proxy*.txt
+**/*proxy*.csv
+**/*proxy*.json
+**/*proxies*.txt
+**/*proxies*.csv
+**/*proxies*.json
+
+!**/sites-to-get-proxies-from.txt
