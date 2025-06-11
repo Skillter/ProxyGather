@@ -1,4 +1,3 @@
-
 import requests
 import re
 from typing import List, Dict
@@ -32,6 +31,10 @@ PROXY_LINE_REGEX = re.compile(
     r'document\.write\(""\+(.*?)\)</script>' # Capture the variable string like 'f+h+h+i+d'
 )
 
+# --- ADDED: Regex for standard, non-obfuscated proxies ---
+# This acts as a fallback in case the site changes its format.
+PLAIN_TEXT_PROXY_REGEX = re.compile(r'(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}):(\d{2,5})')
+
 def _parse_port_variables(html: str) -> Dict[str, str]:
     """Finds and parses the JavaScript variables used for port obfuscation."""
     var_map = {}
@@ -44,8 +47,11 @@ def _parse_port_variables(html: str) -> Dict[str, str]:
 
 def scrape_from_xseo(verbose: bool = True) -> List[str]:
     """
-    Scrapes proxies from xseo.in, decoding the JavaScript-obfuscated port numbers.
-    It now scrapes from multiple predefined URLs on the site.
+    Scrapes proxies from xseo.in.
+    
+    This scraper now works in two stages for maximum resilience:
+    1. It attempts to decode the JavaScript-obfuscated port numbers.
+    2. It also scans for standard, plain-text 'IP:Port' proxies as a fallback.
 
     Args:
         verbose: If True, prints detailed status messages.
@@ -58,61 +64,73 @@ def scrape_from_xseo(verbose: bool = True) -> List[str]:
     
     all_proxies = set()
 
-    # --- MODIFIED: Loop over all URLs defined for this scraper ---
     for url in URLS_TO_SCRAPE:
         try:
             if verbose:
                 print(f"[INFO] XSEO.in: Sending POST request to {url}")
             
-            # This site expects form data, not a JSON payload.
             response = requests.post(url, headers=HEADERS, data=PAYLOAD, timeout=20)
             response.raise_for_status()
             html_content = response.text
-
-            # 1. Extract the variable-to-digit mapping for the current page
+            
+            # --- MODIFIED: Implement a two-pass scraping strategy ---
+            proxies_from_url = set()
+            
+            # --- Pass 1: Handle JavaScript Obfuscation (the primary method) ---
             var_map = _parse_port_variables(html_content)
-            if not var_map:
+            if var_map:
                 if verbose:
-                    print(f"[WARN] XSEO.in: Could not find or parse the port variables script on {url}. Skipping URL.")
-                continue # Move to the next URL
-            
-            if verbose:
-                print(f"[INFO] XSEO.in: Successfully parsed port variables for {url}.")
-
-            # 2. Find all proxy lines and decode their ports
-            proxy_matches = PROXY_LINE_REGEX.findall(html_content)
-            if not proxy_matches:
-                if verbose:
-                    print(f"[WARN] XSEO.in: Could not find any proxy entries on {url}.")
-                continue # Nothing to do on this page
-
-            if verbose:
-                print(f"[INFO] XSEO.in: Found {len(proxy_matches)} potential proxy entries on {url}.")
-            
-            page_proxies = set()
-            for ip, port_vars_str in proxy_matches:
-                port_vars = port_vars_str.split('+')
-                port_digits = [var_map.get(var) for var in port_vars]
-
-                # Check if any variable was not found in our map
-                if any(digit is None for digit in port_digits):
-                    if verbose:
-                        print(f"[WARN] XSEO.in: Could not decode port for IP {ip} on {url}. Vars: '{port_vars_str}'")
-                    continue
+                    print(f"[INFO] XSEO.in: Successfully parsed port variables on {url}.")
                 
-                port = "".join(port_digits)
-                page_proxies.add(f"{ip}:{port}")
+                obfuscated_matches = PROXY_LINE_REGEX.findall(html_content)
+                decoded_count = 0
+                for ip, port_vars_str in obfuscated_matches:
+                    port_vars = port_vars_str.split('+')
+                    port_digits = [var_map.get(var) for var in port_vars]
+
+                    if any(digit is None for digit in port_digits):
+                        if verbose:
+                            print(f"[WARN] XSEO.in: Could not decode port for IP {ip} on {url}. Vars: '{port_vars_str}'")
+                        continue
+                    
+                    port = "".join(port_digits)
+                    proxies_from_url.add(f"{ip}:{port}")
+                    decoded_count += 1
+                
+                if verbose and decoded_count > 0:
+                    print(f"[INFO] XSEO.in: Decoded {decoded_count} obfuscated proxies from {url}.")
+            else:
+                if verbose:
+                    print(f"[INFO] XSEO.in: No JavaScript port obfuscation found on {url}. Checking for plain text.")
+
+            # --- Pass 2: Handle Plain Text Proxies (the fallback method) ---
+            plain_text_matches = PLAIN_TEXT_PROXY_REGEX.findall(html_content)
+            plain_text_found = set()
+            for ip, port in plain_text_matches:
+                plain_text_found.add(f"{ip}:{port}")
+            
+            if verbose and plain_text_found:
+                # To avoid confusion, only report newly found plain-text proxies
+                new_plain_text = len(plain_text_found - proxies_from_url)
+                if new_plain_text > 0:
+                    print(f"[INFO] XSEO.in: Found {new_plain_text} additional plain text proxies on {url}.")
+            
+            # Combine results from both passes for this URL
+            proxies_from_url.update(plain_text_found)
 
             if verbose:
-                new_count = len(page_proxies - all_proxies)
-                print(f"[INFO] XSEO.in: Decoded {len(page_proxies)} proxies from {url}, {new_count} are new.")
+                if not proxies_from_url:
+                    print(f"[WARN] XSEO.in: Could not find any proxies on {url} using either method.")
+                else:
+                    new_count = len(proxies_from_url - all_proxies)
+                    print(f"[INFO] XSEO.in: Found {len(proxies_from_url)} total proxies on {url}, {new_count} are new.")
             
-            all_proxies.update(page_proxies)
+            all_proxies.update(proxies_from_url)
 
         except requests.exceptions.RequestException as e:
             if verbose:
                 print(f"[ERROR] XSEO.in: Failed to fetch or process data from {url}: {e}")
-            continue # Move to the next URL
+            continue
         except Exception as e:
             if verbose:
                 print(f"[ERROR] XSEO.in: An unexpected error occurred while scraping {url}: {e}")
