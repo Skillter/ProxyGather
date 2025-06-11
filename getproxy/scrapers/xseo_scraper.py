@@ -1,9 +1,13 @@
+
 import requests
 import re
 from typing import List, Dict
 
-# URL and payload for the target site
-URL = "https://xseo.in/proxylist"
+# --- MODIFIED: Changed from a single URL to a list of URLs to scrape ---
+URLS_TO_SCRAPE = [
+    "https://xseo.in/proxylist",
+    "https://xseo.in/freeproxy",
+]
 PAYLOAD = {"submit": "Показать по 150 прокси на странице"}
 
 # Standard headers to mimic a browser
@@ -41,6 +45,7 @@ def _parse_port_variables(html: str) -> Dict[str, str]:
 def scrape_from_xseo(verbose: bool = True) -> List[str]:
     """
     Scrapes proxies from xseo.in, decoding the JavaScript-obfuscated port numbers.
+    It now scrapes from multiple predefined URLs on the site.
 
     Args:
         verbose: If True, prints detailed status messages.
@@ -53,52 +58,67 @@ def scrape_from_xseo(verbose: bool = True) -> List[str]:
     
     all_proxies = set()
 
-    try:
-        if verbose:
-            print(f"[INFO] XSEO.in: Sending POST request to {URL}")
-        
-        # This site expects form data, not a JSON payload.
-        response = requests.post(URL, headers=HEADERS, data=PAYLOAD, timeout=20)
-        response.raise_for_status()
-        html_content = response.text
-
-        # 1. Extract the variable-to-digit mapping
-        var_map = _parse_port_variables(html_content)
-        if not var_map:
-            raise Exception("Could not find or parse the port variable definitions script.")
-        
-        if verbose:
-            print(f"[INFO] XSEO.in: Successfully parsed port variables: {var_map}")
-
-        # 2. Find all proxy lines and decode their ports
-        proxy_matches = PROXY_LINE_REGEX.findall(html_content)
-        if not proxy_matches:
+    # --- MODIFIED: Loop over all URLs defined for this scraper ---
+    for url in URLS_TO_SCRAPE:
+        try:
             if verbose:
-                print("[WARN] XSEO.in: Could not find any proxy entries matching the expected pattern.")
-            return []
-
-        if verbose:
-            print(f"[INFO] XSEO.in: Found {len(proxy_matches)} potential proxy entries.")
-
-        for ip, port_vars_str in proxy_matches:
-            port_vars = port_vars_str.split('+')
-            port_digits = [var_map.get(var) for var in port_vars]
-
-            # Check if any variable was not found in our map
-            if any(digit is None for digit in port_digits):
-                if verbose:
-                    print(f"[WARN] XSEO.in: Could not decode port for IP {ip}. Vars: '{port_vars_str}'")
-                continue
+                print(f"[INFO] XSEO.in: Sending POST request to {url}")
             
-            port = "".join(port_digits)
-            all_proxies.add(f"{ip}:{port}")
+            # This site expects form data, not a JSON payload.
+            response = requests.post(url, headers=HEADERS, data=PAYLOAD, timeout=20)
+            response.raise_for_status()
+            html_content = response.text
 
-    except requests.exceptions.RequestException as e:
-        raise Exception(f"Failed to fetch data from XSEO.in: {e}") from e
-    except Exception as e:
-        raise Exception(f"An error occurred during XSEO.in scraping: {e}") from e
+            # 1. Extract the variable-to-digit mapping for the current page
+            var_map = _parse_port_variables(html_content)
+            if not var_map:
+                if verbose:
+                    print(f"[WARN] XSEO.in: Could not find or parse the port variables script on {url}. Skipping URL.")
+                continue # Move to the next URL
+            
+            if verbose:
+                print(f"[INFO] XSEO.in: Successfully parsed port variables for {url}.")
+
+            # 2. Find all proxy lines and decode their ports
+            proxy_matches = PROXY_LINE_REGEX.findall(html_content)
+            if not proxy_matches:
+                if verbose:
+                    print(f"[WARN] XSEO.in: Could not find any proxy entries on {url}.")
+                continue # Nothing to do on this page
+
+            if verbose:
+                print(f"[INFO] XSEO.in: Found {len(proxy_matches)} potential proxy entries on {url}.")
+            
+            page_proxies = set()
+            for ip, port_vars_str in proxy_matches:
+                port_vars = port_vars_str.split('+')
+                port_digits = [var_map.get(var) for var in port_vars]
+
+                # Check if any variable was not found in our map
+                if any(digit is None for digit in port_digits):
+                    if verbose:
+                        print(f"[WARN] XSEO.in: Could not decode port for IP {ip} on {url}. Vars: '{port_vars_str}'")
+                    continue
+                
+                port = "".join(port_digits)
+                page_proxies.add(f"{ip}:{port}")
+
+            if verbose:
+                new_count = len(page_proxies - all_proxies)
+                print(f"[INFO] XSEO.in: Decoded {len(page_proxies)} proxies from {url}, {new_count} are new.")
+            
+            all_proxies.update(page_proxies)
+
+        except requests.exceptions.RequestException as e:
+            if verbose:
+                print(f"[ERROR] XSEO.in: Failed to fetch or process data from {url}: {e}")
+            continue # Move to the next URL
+        except Exception as e:
+            if verbose:
+                print(f"[ERROR] XSEO.in: An unexpected error occurred while scraping {url}: {e}")
+            continue
 
     if verbose:
-        print(f"[INFO] XSEO.in: Finished. Found {len(all_proxies)} unique proxies.")
+        print(f"[INFO] XSEO.in: Finished. Found {len(all_proxies)} unique proxies from {len(URLS_TO_SCRAPE)} URLs.")
 
     return sorted(list(all_proxies))
