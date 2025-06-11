@@ -1,7 +1,7 @@
-import re
 import requests
-import argparse
-from typing import List, Set
+import re
+import json
+from typing import List, Dict, Union, Tuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Define the possible patterns for scraping proxies
@@ -12,7 +12,7 @@ PATTERNS = {
     r'(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})&nbsp;&nbsp;(\d+)',
     r'<td>\s*(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\s*</td>\s*<td>\s*(\d+)\s*</td>',
     r'(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}).*?(\d{2,5})',
-    r'(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})[^0-9]*(\d+)',
+    # r'(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})[^0-9]*(\d+)', # Too broad, matches wrong things in https://xseo.in/proxylist
     r'(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\s*:\s*(\d+)',
     r'(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})[\s-]+(\d{2,5})',
     r'(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})<.*?>(\d+)<',
@@ -20,65 +20,82 @@ PATTERNS = {
 }
 
 HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3'
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3',
+    # Add content-type header for POST requests
+    'Content-Type': 'application/json'
 }
 
-def extract_proxies_from_text(text: str) -> Set[str]:
+def _fetch_and_extract(url: str, payload: Union[Dict, None], verbose: bool = False) -> set:
     """
-    Extracts proxies from a string of HTML/text using predefined regex patterns.
-
-    Args:
-        text: A string containing the content to search for proxies.
-
-    Returns:
-        A set of unique proxy strings in 'ip:port' format found in the text.
+    Helper function to fetch one URL and extract proxies.
+    Sends a POST request if a payload is provided, otherwise sends a GET request.
+    Runs in a thread.
     """
-    found_proxies = set()
-    for pattern in PATTERNS:
-        matches = re.findall(pattern, text)
-        if matches:
-            for match in matches:
-                ip, port = match
-                proxy = f'{ip}:{port}'
-                found_proxies.add(proxy)
-    return found_proxies
-
-
-def _fetch_and_extract(url: str, verbose: bool = False) -> Set[str]:
-    """Helper function to fetch one URL via GET and extract proxies. Runs in a thread."""
+    proxies_found = set()
+    request_type = "POST" if payload else "GET"
+    
     if verbose:
-        print(f"[INFO] Scraping proxies from: {url}")
+        print(f"[INFO] Scraping ({request_type}): {url}")
+        
     try:
-        response = requests.get(url, headers=HEADERS, timeout=15)
+        # --- MODIFIED: Choose between GET and POST ---
+        if payload:
+            response = requests.post(url, headers=HEADERS, json=payload, timeout=15)
+        else:
+            # For GET requests, we don't need the Content-Type header
+            get_headers = HEADERS.copy()
+            get_headers.pop('Content-Type', None)
+            response = requests.get(url, headers=get_headers, timeout=15)
+        
         response.raise_for_status()
 
-        # --- REFACTORED ---
-        # Use the new, reusable extraction function
-        proxies_found = extract_proxies_from_text(response.text)
+        found_on_page = False
+        for pattern in PATTERNS:
+            matches = re.findall(pattern, response.text)
+            if matches:
+                for match in matches:
+                    ip, port = match
+                    proxies_found.add(f'{ip}:{port}')
+                found_on_page = True
         
         if verbose:
-            if proxies_found:
+            if found_on_page:
                  print(f"[INFO]   ... Found {len(proxies_found)} unique proxies on {url}")
             else:
                  print(f"[WARN]   ... Could not find any proxies on {url}")
-        
-        return proxies_found
 
     except requests.exceptions.RequestException as e:
         if verbose:
-            print(f"[ERROR] Could not fetch URL {url}: {e}")
+            print(f"[ERROR] Could not fetch URL ({request_type}) {url}: {e}")
     
-    return set() # Return an empty set on failure
+    return proxies_found
 
 
-def scrape_proxies(urls: List[str], verbose: bool = False, max_workers: int = 10) -> List[str]:
+def scrape_proxies(
+    scrape_targets: List[Tuple[str, Union[Dict, None]]],
+    verbose: bool = False,
+    max_workers: int = 10
+) -> List[str]:
     """
-    Scrapes proxy addresses concurrently from a list of URLs using GET requests.
-    (Function body remains the same as before, no changes needed here)
+    Scrapes proxy addresses concurrently from a list of targets.
+    Each target is a tuple containing a URL and an optional payload dictionary.
+
+    Args:
+        scrape_targets: A list of tuples, where each is (url, optional_payload).
+        verbose: If True, prints status messages during scraping.
+        max_workers: The maximum number of threads to use for scraping.
+
+    Returns:
+        A list of unique proxy strings in 'ip:port' format.
     """
     all_proxies = set()
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        future_to_url = {executor.submit(_fetch_and_extract, url, verbose): url for url in urls}
+        # Create a future for each URL and its payload
+        future_to_url = {
+            executor.submit(_fetch_and_extract, url, payload, verbose): url
+            for url, payload in scrape_targets
+        }
+        
         for future in as_completed(future_to_url):
             try:
                 proxies_from_url = future.result()
@@ -89,31 +106,3 @@ def scrape_proxies(urls: List[str], verbose: bool = False, max_workers: int = 10
                     print(f"[ERROR] An exception occurred while processing {url}: {exc}")
 
     return sorted(list(all_proxies))
-
-# This block runs only when the script is executed directly from the command line
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="A command-line tool to scrape proxy IPs and ports from one or more URLs."
-    )
-    
-    parser.add_argument(
-        'urls', 
-        metavar='URL', 
-        type=str, 
-        nargs='+',  # This allows one or more arguments
-        help='A space-separated list of URLs to scrape for proxies.'
-    )
-    
-    args = parser.parse_args()
-    
-    print("--- Starting Proxy Scraper ---")
-    # Call the main function with the URLs from the command line and set verbose to True
-    found_proxies = scrape_proxies(args.urls, verbose=True)
-    
-    print("\n--- Scraping Complete ---")
-    if not found_proxies:
-        print("\nError: Could not find any proxies across all provided URLs.")
-    else:
-        print(f"\nFound a total of {len(found_proxies)} unique proxies:")
-        for proxy in found_proxies:
-            print(proxy)
