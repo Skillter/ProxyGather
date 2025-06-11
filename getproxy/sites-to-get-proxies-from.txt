@@ -21,6 +21,10 @@ https://www.proxy-list.download
 https://www.proxyscan.io/
 http://pubproxy.com
 https://freeproxy.lunaproxy.com/
+https://webanetlabs.net/publ/23
+https://webanetlabs.net/publ/24
+https://webanetlabs.net/publ/28
+
 
 https://www.proxy-list.download/api/v2/get?l=en&t=http
 https://www.proxy-list.download/api/v2/get?l=en&t=https
@@ -36,3 +40,6 @@ https://github.com/zloi-user/hideip.me/raw/refs/heads/master/https.txt
 https://github.com/zloi-user/hideip.me/raw/refs/heads/master/socks4.txt
 https://github.com/zloi-user/hideip.me/raw/refs/heads/master/socks5.txt
 https://github.com/zloi-user/hideip.me/raw/refs/heads/master/connect.txt
+
+
+https://papaproxy.net/ru/ipv4.php
