@@ -1,0 +1,2 @@
+
+https://sockslist.us/server/index.php?controller=FrontPublic&action=ActionGetProxy|{"page":"{page}","country":"All"}|{"x-requested-with":"XMLHttpRequest"}
