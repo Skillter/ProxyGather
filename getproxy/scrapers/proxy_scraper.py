@@ -1,6 +1,7 @@
 import requests
 import re
 import json
+import time
 from typing import List, Dict, Union, Tuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -38,110 +39,149 @@ PATTERNS = [
     r'(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})[\s-]+(\d{2,5})',
     # 11. IP and Port separated by some unknown HTML tag.
     r'(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})<.*?>(\d+)<',
-    # 12. The most generic pattern: IP, some characters, and a port-like number (on a single line).
-    r'(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}).*?(\d{2,5})',
+    # 12. MODIFIED: A smarter generic pattern. Looks for an IP, then a common separator (whitespace or < >), then a port.
+    #     This avoids matching numbers inside HTML attributes like class="pp14".
+    r'(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})[\s<>]+(\d{2,5})',
 ]
 
-
-HEADERS = {
+DEFAULT_HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3',
-    # Add content-type header for POST requests
-    'Content-Type': 'application/json'
 }
 
-def _fetch_and_extract(url: str, payload: Union[Dict, None], verbose: bool = False) -> set:
-    """
-    Helper function to fetch one URL and extract proxies.
-    Sends a POST request if a payload is provided, otherwise sends a GET request.
-    Runs in a thread.
-    """
+PROXY_VALIDATION_REGEX = re.compile(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{1,5}$')
+
+def _recursive_json_search_and_extract(data: any, proxies_found: set):
+    if isinstance(data, dict):
+        for key in ['address', 'proxy', 'addr', 'ip_port']:
+            proxy_str = data.get(key)
+            if isinstance(proxy_str, str) and PROXY_VALIDATION_REGEX.match(proxy_str):
+                proxies_found.add(proxy_str)
+                return
+        ip, port = None, None
+        for ip_key in ['ip', 'ipAddress', 'host', 'ip_address']:
+            if data.get(ip_key): ip = str(data[ip_key])
+        for port_key in ['port']:
+            if data.get(port_key): port = str(data[port_key])
+        if ip and port:
+            proxy_str = f"{ip}:{port}"
+            if PROXY_VALIDATION_REGEX.match(proxy_str):
+                proxies_found.add(proxy_str)
+                return
+        for value in data.values():
+            _recursive_json_search_and_extract(value, proxies_found)
+    elif isinstance(data, list):
+        for item in data:
+            if isinstance(item, str) and PROXY_VALIDATION_REGEX.match(item):
+                proxies_found.add(item)
+            elif isinstance(item, (dict, list)):
+                _recursive_json_search_and_extract(item, proxies_found)
+
+def extract_proxies_from_content(content: str, verbose: bool = False) -> set:
     proxies_found = set()
-    request_type = "POST" if payload else "GET"
-    
-    if verbose:
-        print(f"[INFO] Scraping ({request_type}): {url}")
-        
     try:
-        # --- MODIFIED: Choose between GET and POST ---
-        if payload:
-            response = requests.post(url, headers=HEADERS, json=payload, timeout=15)
-        else:
-            # For GET requests, we don't need the Content-Type header
-            get_headers = HEADERS.copy()
-            get_headers.pop('Content-Type', None)
-            response = requests.get(url, headers=get_headers, timeout=15)
-        
-        response.raise_for_status()
-
-        # --- The loop now iterates through the prioritized list of patterns ---
-        found_on_page = False
+        json_data = json.loads(content)
+        _recursive_json_search_and_extract(json_data, proxies_found)
+        if proxies_found and verbose: print("[DEBUG]  ... Found proxies via smart JSON parsing.")
+    except (json.JSONDecodeError, TypeError): pass
+    if not proxies_found:
+        data_config_pattern = r'data-config="(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{1,5})"'
+        matches = re.findall(data_config_pattern, content)
+        if matches:
+            proxies_found.update(matches)
+            if verbose: print("[DEBUG]  ... Found proxies via 'data-config' attribute parsing.")
+    if not proxies_found:
         for pattern in PATTERNS:
-            matches_for_pattern = set()
             try:
-                matches = re.findall(pattern, response.text)
-                if matches:
-                    for match in matches:
-                        # Ensure match is a tuple with at least two elements
-                        if isinstance(match, tuple) and len(match) >= 2:
-                            ip, port = match[0], match[1]
-                            matches_for_pattern.add(f'{ip}:{port}')
-                        # Handle cases where re.findall returns a list of strings
-                        elif isinstance(match, str) and ":" in match:
-                             matches_for_pattern.add(match)
+                matches = re.findall(pattern, content)
+                for match in matches:
+                    if isinstance(match, tuple) and len(match) >= 2:
+                        proxies_found.add(f'{match[0]}:{match[1]}')
+                    elif isinstance(match, str) and ":" in match:
+                        proxies_found.add(match)
+            except re.error: continue
+        if verbose and proxies_found: print("[DEBUG]  ... Found proxies via general regex fallback.")
+    return proxies_found
 
-                    if matches_for_pattern:
-                        proxies_found.update(matches_for_pattern)
-                        found_on_page = True
-            except re.error as e:
-                if verbose:
-                    print(f"[ERROR] Regex error for pattern '{pattern}' on {url}: {e}")
-
-        
-        if verbose:
-            if found_on_page:
-                 print(f"[INFO]   ... Found {len(proxies_found)} unique proxies on {url}")
-            else:
-                 print(f"[WARN]   ... Could not find any proxies on {url}")
-
+def _fetch_and_extract_single(url: str, payload: Union[Dict, None], headers: Union[Dict, None], verbose: bool) -> set:
+    """
+    Fetches a single URL using a stateless request.
+    """
+    request_type = "POST" if payload else "GET"
+    merged_headers = DEFAULT_HEADERS.copy()
+    if headers:
+        merged_headers.update(headers)
+    
+    try:
+        if payload:
+            # --- MODIFIED: Use `data=` for form-urlencoded POST, not `json=`. This is the key change. ---
+            response = requests.post(url, headers=merged_headers, data=payload, timeout=15)
+        else:
+            response = requests.get(url, headers=merged_headers, timeout=15)
+        response.raise_for_status()
+        return extract_proxies_from_content(response.text, verbose=verbose)
     except requests.exceptions.RequestException as e:
         if verbose:
             print(f"[ERROR] Could not fetch URL ({request_type}) {url}: {e}")
-    
-    return proxies_found
+        return set()
 
-
-def scrape_proxies(
-    scrape_targets: List[Tuple[str, Union[Dict, None]]],
-    verbose: bool = False,
-    max_workers: int = 10
-) -> List[str]:
-    """
-    Scrapes proxy addresses concurrently from a list of targets.
-    Each target is a tuple containing a URL and an optional payload dictionary.
-
-    Args:
-        scrape_targets: A list of tuples, where each is (url, optional_payload).
-        verbose: If True, prints status messages during scraping.
-        max_workers: The maximum number of threads to use for scraping.
-
-    Returns:
-        A list of unique proxy strings in 'ip:port' format.
-    """
+def scrape_proxies(scrape_targets: List[Tuple[str, Union[Dict, None], Union[Dict, None]]], verbose: bool = False, max_workers: int = 10) -> List[str]:
     all_proxies = set()
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        # Create a future for each URL and its payload
-        future_to_url = {
-            executor.submit(_fetch_and_extract, url, payload, verbose): url
-            for url, payload in scrape_targets
-        }
-        
-        for future in as_completed(future_to_url):
-            try:
-                proxies_from_url = future.result()
-                all_proxies.update(proxies_from_url)
-            except Exception as exc:
-                url = future_to_url[future]
-                if verbose:
-                    print(f"[ERROR] An exception occurred while processing {url}: {exc}")
+    single_req_targets = []
+    paginated_targets = []
+
+    for url, payload, headers in scrape_targets:
+        is_paginated = "{page}" in url or ("{page}" in json.dumps(payload) if payload else False)
+        if is_paginated:
+            paginated_targets.append((url, payload, headers))
+        else:
+            single_req_targets.append((url, payload, headers))
+
+    if single_req_targets:
+        print(f"[INFO] General Scraper: Found {len(single_req_targets)} single-request URLs. Scraping concurrently...")
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_url = {
+                executor.submit(_fetch_and_extract_single, url, payload, headers, False): url 
+                for url, payload, headers in single_req_targets
+            }
+            for future in as_completed(future_to_url):
+                try:
+                    proxies_from_url = future.result()
+                    if proxies_from_url and verbose:
+                        print(f"[INFO] General Scraper: Found {len(proxies_from_url)} proxies on {future_to_url[future]}")
+                    all_proxies.update(proxies_from_url)
+                except Exception as exc:
+                    if verbose: print(f"[ERROR] An exception occurred while processing {future_to_url[future]}: {exc}")
+
+    if paginated_targets:
+        print(f"[INFO] General Scraper: Found {len(paginated_targets)} paginated URLs. Scraping sequentially...")
+        for base_url, base_payload, base_headers in paginated_targets:
+            page_num = 1
+            print(f"[INFO] General Scraper: Starting pagination for {base_url.split('|')[0]}")
+            while True:
+                current_url = base_url.replace("{page}", str(page_num))
+                current_payload = None
+                if base_payload:
+                    # Convert payload to a string to replace {page}, then load back to dict
+                    payload_str = json.dumps(base_payload)
+                    payload_str = payload_str.replace("{page}", str(page_num))
+                    current_payload = json.loads(payload_str)
+                
+                if verbose: print(f"[INFO]   ... Scraping page {page_num} ({current_url})")
+                
+                newly_scraped = _fetch_and_extract_single(current_url, current_payload, base_headers, False)
+                
+                if not newly_scraped:
+                    if verbose: print(f"[INFO]   ... No proxies found on page {page_num}. Ending pagination for this URL.")
+                    break
+                
+                initial_count = len(all_proxies)
+                all_proxies.update(newly_scraped)
+                
+                if len(all_proxies) == initial_count:
+                    if verbose: print("[INFO]   ... No new unique proxies found. Ending pagination for this URL.")
+                    break
+
+                page_num += 1
+                time.sleep(1.5)
 
     return sorted(list(all_proxies))
