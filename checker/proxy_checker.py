@@ -23,6 +23,7 @@
 # SOFTWARE.
 
 
+
 import pycurl
 from io import BytesIO
 import re
@@ -31,7 +32,9 @@ import json
 
 
 class ProxyChecker:
-    def __init__(self):
+    def __init__(self, timeout: float = 10.0):
+        # you can now set the timeout when creating the checker
+        self.timeout_ms = int(timeout * 1000)
         self.ip = self.get_ip()
         self.proxy_judges = [
             'http://proxyjudge.us/azenv.php',
@@ -39,6 +42,7 @@ class ProxyChecker:
         ]
 
     def get_ip(self):
+        # using a more reliable IP service
         r = self.send_query(url='https://api.ipify.org/')
 
         if not r:
@@ -52,7 +56,8 @@ class ProxyChecker:
 
         c.setopt(c.URL, url or random.choice(self.proxy_judges))
         c.setopt(c.WRITEDATA, response)
-        c.setopt(c.TIMEOUT, 5)
+        # using timeout in milliseconds for better precision
+        c.setopt(c.TIMEOUT_MS, self.timeout_ms)
 
         if user is not None and password is not None:
             c.setopt(c.PROXYUSERPWD, f"{user}:{password}")            
