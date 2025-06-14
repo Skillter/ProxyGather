@@ -3,7 +3,7 @@ import sys
 import argparse
 import os
 import re
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed, wait
 from datetime import datetime
 
 from checker.proxy_checker import ProxyChecker
@@ -14,10 +14,8 @@ def _save_working_proxies(proxy_data, prepend_protocol, datetime_str, is_final=F
     """A helper function to save the dictionary of working proxies to their respective files."""
     for protocol, proxies_set in proxy_data.items():
         if not proxies_set: continue
-        # this now includes the full date and time
         filename = f"working-proxies-{protocol}-{datetime_str}.txt"
         try:
-            # using 'w' is fine, since the timestamp makes the filename unique
             with open(filename, 'w', encoding='utf-8') as f:
                 for proxy in sorted(proxies_set):
                     if prepend_protocol and protocol != 'all':
@@ -69,7 +67,6 @@ def main():
     parser.add_argument('--prepend-protocol', action='store_true', help="Prepend protocol to proxies in specific files.")
     args = parser.parse_args()
 
-    # --- Setup timeout ---
     try:
         timeout = parse_timeout(args.timeout)
         if timeout <= 0: timeout = 1.0
@@ -77,7 +74,6 @@ def main():
         print(f"[ERROR] Invalid timeout format: {args.timeout}. Please use formats like '500ms', '10s', or '8'.")
         return
 
-    # --- Setup files and checker ---
     input_filename = args.file
     if not os.path.exists(input_filename):
         print(f"[ERROR] Input file '{input_filename}' not found.")
@@ -110,23 +106,24 @@ def main():
             future = executor.submit(check_and_format_proxy, checker, proxy)
             in_flight[future] = proxy
 
-            if len(in_flight) >= args.threads * 2:
-                future_done = next(as_completed(in_flight))
-                proxy_from_future = in_flight.pop(future_done)
-                try:
-                    result = future_done.result()
-                    if result:
-                        proxy_line, details = result
-                        working_proxies['all'].add(proxy_line)
-                        for proto in details.get('protocols', []):
-                            if proto in working_proxies: working_proxies[proto].add(proxy_line)
-                        print(f"\n[SUCCESS] Proxy: {proxy_line:<22} | Anonymity: {details['anonymity']:<11} | Protocols: {','.join(details['protocols']):<15} | Timeout: {details['timeout']}ms")
-                        if len(working_proxies['all']) % SAVE_BATCH_SIZE == 0:
-                            _save_working_proxies(working_proxies, args.prepend_protocol, now_str)
-                    # else:
-                        # print(".", end="", flush=True)
-                except Exception as exc:
-                    print(f"\n[ERROR] An exception occurred while checking proxy {proxy_from_future}: {exc}")
+            while len(in_flight) >= args.threads * 2:
+                done_futures, _ = wait(in_flight.keys(), return_when='FIRST_COMPLETED')
+                for future_done in done_futures:
+                    proxy_from_future = in_flight.pop(future_done)
+                    try:
+                        result = future_done.result()
+                        if result:
+                            proxy_line, details = result
+                            working_proxies['all'].add(proxy_line)
+                            for proto in details.get('protocols', []):
+                                if proto in working_proxies: working_proxies[proto].add(proxy_line)
+                            print(f"\n[SUCCESS] Proxy: {proxy_line:<22} | Anonymity: {details['anonymity']:<11} | Protocols: {','.join(details['protocols']):<15} | Timeout: {details['timeout']}ms")
+                            if len(working_proxies['all']) % SAVE_BATCH_SIZE == 0:
+                                _save_working_proxies(working_proxies, args.prepend_protocol, now_str)
+                        else:
+                            print(".", end="", flush=True)
+                    except Exception as exc:
+                        print(f"\n[ERROR] An exception occurred while checking proxy {proxy_from_future}: {exc}")
         
         print("\n[INFO] All proxies have been submitted. Waiting for the last checks to complete...")
         for future_done in as_completed(in_flight):
@@ -141,16 +138,20 @@ def main():
                     print(f"\n[SUCCESS] Proxy: {proxy_line:<22} | Anonymity: {details['anonymity']:<11} | Protocols: {','.join(details['protocols']):<15} | Timeout: {details['timeout']}ms")
                     if len(working_proxies['all']) % SAVE_BATCH_SIZE == 0:
                         _save_working_proxies(working_proxies, args.prepend_protocol, now_str)
-                # else:
-                    # print(".", end="", flush=True)
+                else:
+                    print(".", end="", flush=True)
             except Exception as exc:
                 print(f"\n[ERROR] An exception occurred while checking proxy {proxy_from_future}: {exc}")
 
     except KeyboardInterrupt:
         print("\n\n[INTERRUPTED] User stopped the script. Shutting down threads immediately...")
+        proxies_to_recheck = list(in_flight.values())
         executor.shutdown(wait=False, cancel_futures=True)
         
-        # here is the new logic for handling the resume file name
+        # this is the key fix: we must close the file handle before trying to replace the file
+        if input_file_handle and not input_file_handle.closed:
+            input_file_handle.close()
+            
         if "-resume" in input_filename:
             resume_filename = input_filename
             print(f"[INFO] Overwriting resume file '{resume_filename}'...")
@@ -158,16 +159,24 @@ def main():
             base, ext = os.path.splitext(input_filename)
             resume_filename = f"{base}-resume{ext}"
             print(f"[INFO] Creating resume file '{resume_filename}'...")
-
-        with open(resume_filename, 'w', encoding='utf-8') as f_out:
-            for proxy in in_flight.values():
-                f_out.write(proxy + '\n')
+        
+        temp_filename = resume_filename + ".tmp"
+        
+        try:
+            with open(temp_filename, 'w', encoding='utf-8') as f_out:
+                for proxy in proxies_to_recheck:
+                    f_out.write(proxy + '\n')
+                # we don't need to read the rest of the file handle because we already closed it
+                # and the list of proxies to recheck already contains everything that wasn't processed
             
-            if input_file_handle and not input_file_handle.closed:
-                for line in input_file_handle:
-                    f_out.write(line)
-        print(f"[SUCCESS] Resume file updated. To continue, run the script with --file {resume_filename}")
-    
+            os.replace(temp_filename, resume_filename)
+            print(f"[SUCCESS] Resume file updated. To continue, run the script with --file {resume_filename}")
+
+        except Exception as e:
+            print(f"\n[ERROR] Could not save resume file: {e}")
+            if os.path.exists(temp_filename):
+                print(f"[INFO] Your unsaved proxies are likely in '{temp_filename}'.")
+
     except Exception as e:
         print(f"\n[ERROR] An unexpected error occurred: {e}")
         executor.shutdown(wait=False, cancel_futures=True)
