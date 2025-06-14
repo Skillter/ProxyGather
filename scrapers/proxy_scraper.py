@@ -103,9 +103,6 @@ def extract_proxies_from_content(content: str, verbose: bool = False) -> set:
     return proxies_found
 
 def _fetch_and_extract_single(url: str, payload: Union[Dict, None], headers: Union[Dict, None], verbose: bool) -> set:
-    """
-    Fetches a single URL using a stateless request.
-    """
     request_type = "POST" if payload else "GET"
     merged_headers = DEFAULT_HEADERS.copy()
     if headers:
@@ -113,7 +110,6 @@ def _fetch_and_extract_single(url: str, payload: Union[Dict, None], headers: Uni
     
     try:
         if payload:
-            # --- MODIFIED: Use `data=` for form-urlencoded POST, not `json=`. This is the key change. ---
             response = requests.post(url, headers=merged_headers, data=payload, timeout=15)
         else:
             response = requests.get(url, headers=merged_headers, timeout=15)
@@ -124,8 +120,16 @@ def _fetch_and_extract_single(url: str, payload: Union[Dict, None], headers: Uni
             print(f"[ERROR] Could not fetch URL ({request_type}) {url}: {e}")
         return set()
 
-def scrape_proxies(scrape_targets: List[Tuple[str, Union[Dict, None], Union[Dict, None]]], verbose: bool = False, max_workers: int = 10) -> List[str]:
+def scrape_proxies(
+    scrape_targets: List[Tuple[str, Union[Dict, None], Union[Dict, None]]], 
+    verbose: bool = False, 
+    max_workers: int = 10
+) -> Tuple[List[str], List[str]]:
+    """
+    Scrapes proxies and now returns both the proxies and a list of successful source URLs.
+    """
     all_proxies = set()
+    successful_urls = set()
     single_req_targets = []
     paginated_targets = []
 
@@ -144,24 +148,26 @@ def scrape_proxies(scrape_targets: List[Tuple[str, Union[Dict, None], Union[Dict
                 for url, payload, headers in single_req_targets
             }
             for future in as_completed(future_to_url):
+                url = future_to_url[future]
                 try:
                     proxies_from_url = future.result()
-                    if proxies_from_url and verbose:
-                        print(f"[INFO] General Scraper: Found {len(proxies_from_url)} proxies on {future_to_url[future]}")
-                    all_proxies.update(proxies_from_url)
+                    if proxies_from_url:
+                        if verbose: print(f"[INFO] General Scraper: Found {len(proxies_from_url)} proxies on {url}")
+                        all_proxies.update(proxies_from_url)
+                        successful_urls.add(url) # Mark this URL as successful
                 except Exception as exc:
-                    if verbose: print(f"[ERROR] An exception occurred while processing {future_to_url[future]}: {exc}")
+                    if verbose: print(f"[ERROR] An exception occurred while processing {url}: {exc}")
 
     if paginated_targets:
         print(f"[INFO] General Scraper: Found {len(paginated_targets)} paginated URLs. Scraping sequentially...")
         for base_url, base_payload, base_headers in paginated_targets:
             page_num = 1
-            print(f"[INFO] General Scraper: Starting pagination for {base_url.split('|')[0]}")
+            print(f"[INFO] General Scraper: Starting pagination for {base_url}")
+            found_any_on_paginated_url = False
             while True:
                 current_url = base_url.replace("{page}", str(page_num))
                 current_payload = None
                 if base_payload:
-                    # Convert payload to a string to replace {page}, then load back to dict
                     payload_str = json.dumps(base_payload)
                     payload_str = payload_str.replace("{page}", str(page_num))
                     current_payload = json.loads(payload_str)
@@ -170,18 +176,23 @@ def scrape_proxies(scrape_targets: List[Tuple[str, Union[Dict, None], Union[Dict
                 
                 newly_scraped = _fetch_and_extract_single(current_url, current_payload, base_headers, False)
                 
-                if not newly_scraped:
-                    if verbose: print(f"[INFO]   ... No proxies found on page {page_num}. Ending pagination for this URL.")
+                if newly_scraped:
+                    found_any_on_paginated_url = True
+                else:
+                    if verbose: print(f"[INFO]   ... No proxies found on page {page_num}. Ending pagination.")
                     break
                 
                 initial_count = len(all_proxies)
                 all_proxies.update(newly_scraped)
                 
                 if len(all_proxies) == initial_count:
-                    if verbose: print("[INFO]   ... No new unique proxies found. Ending pagination for this URL.")
+                    if verbose: print("[INFO]   ... No new unique proxies found. Ending pagination.")
                     break
 
                 page_num += 1
                 time.sleep(1.5)
+            
+            if found_any_on_paginated_url:
+                successful_urls.add(base_url) # Mark the base URL as successful
 
-    return sorted(list(all_proxies))
+    return sorted(list(all_proxies)), sorted(list(successful_urls))
