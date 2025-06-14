@@ -89,7 +89,6 @@ def main():
         print("[ERROR] Could not determine your public IP. Aborting check.")
         return
     
-    # getting the timestamp once, so it's consistent for all files in this run
     now_str = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
     in_flight = {}
     working_proxies = {'all': set(), 'http': set(), 'socks4': set(), 'socks5': set()}
@@ -142,8 +141,8 @@ def main():
                     print(f"\n[SUCCESS] Proxy: {proxy_line:<22} | Anonymity: {details['anonymity']:<11} | Protocols: {','.join(details['protocols']):<15} | Timeout: {details['timeout']}ms")
                     if len(working_proxies['all']) % SAVE_BATCH_SIZE == 0:
                         _save_working_proxies(working_proxies, args.prepend_protocol, now_str)
-                else:
-                    print(".", end="", flush=True)
+                # else:
+                #     print(".", end="", flush=True)
             except Exception as exc:
                 print(f"\n[ERROR] An exception occurred while checking proxy {proxy_from_future}: {exc}")
 
@@ -151,9 +150,14 @@ def main():
         print("\n\n[INTERRUPTED] User stopped the script. Shutting down threads immediately...")
         executor.shutdown(wait=False, cancel_futures=True)
         
-        base, ext = os.path.splitext(input_filename)
-        resume_filename = f"{base}-resume{ext}"
-        print(f"[INFO] Saving remaining unchecked proxies to '{resume_filename}'...")
+        # here is the new logic for handling the resume file name
+        if "-resume" in input_filename:
+            resume_filename = input_filename
+            print(f"[INFO] Overwriting resume file '{resume_filename}'...")
+        else:
+            base, ext = os.path.splitext(input_filename)
+            resume_filename = f"{base}-resume{ext}"
+            print(f"[INFO] Creating resume file '{resume_filename}'...")
 
         with open(resume_filename, 'w', encoding='utf-8') as f_out:
             for proxy in in_flight.values():
@@ -162,7 +166,7 @@ def main():
             if input_file_handle and not input_file_handle.closed:
                 for line in input_file_handle:
                     f_out.write(line)
-        print(f"[SUCCESS] Resume file created. Run the script with --file {resume_filename} to continue.")
+        print(f"[SUCCESS] Resume file updated. To continue, run the script with --file {resume_filename}")
     
     except Exception as e:
         print(f"\n[ERROR] An unexpected error occurred: {e}")
