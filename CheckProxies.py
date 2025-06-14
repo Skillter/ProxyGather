@@ -124,7 +124,7 @@ def main():
                         if len(working_proxies['all']) % SAVE_BATCH_SIZE == 0:
                             _save_working_proxies(working_proxies, args.prepend_protocol, now_str)
                     # else:
-                    #     print(".", end="", flush=True)
+                        # print(".", end="", flush=True)
                 except Exception as exc:
                     print(f"\n[ERROR] An exception occurred while checking proxy {proxy_from_future}: {exc}")
         
@@ -142,7 +142,7 @@ def main():
                     if len(working_proxies['all']) % SAVE_BATCH_SIZE == 0:
                         _save_working_proxies(working_proxies, args.prepend_protocol, now_str)
                 # else:
-                #     print(".", end="", flush=True)
+                    # print(".", end="", flush=True)
             except Exception as exc:
                 print(f"\n[ERROR] An exception occurred while checking proxy {proxy_from_future}: {exc}")
 
