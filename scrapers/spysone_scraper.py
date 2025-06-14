@@ -5,7 +5,7 @@ import requests
 from typing import List
 
 # Import the reusable components from our other scraper module
-from .proxy_scraper import extract_proxies_from_text, HEADERS
+from .proxy_scraper import extract_proxies_from_content, DEFAULT_HEADERS
 
 # URL for the POST requests
 SPYSONE_URL = "https://spys.one/en/free-proxy-list/"
@@ -56,7 +56,7 @@ def scrape_from_spysone(verbose: bool = False) -> List[str]:
             response.raise_for_status()
 
             # Use our reusable extraction logic on the response HTML
-            newly_found = extract_proxies_from_text(response.text)
+            newly_found = extract_proxies_from_content(response.text)
             
             if verbose:
                 if newly_found:
