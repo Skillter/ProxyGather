@@ -23,12 +23,6 @@
 # SOFTWARE.
 
 
-
-
-
-
-
-
 import pycurl
 from io import BytesIO
 import re
@@ -135,7 +129,6 @@ class ProxyChecker:
         return 'Elite'
 
     def check_proxy(self, proxy, check_country=True, check_address=False, user=None, password=None):
-        # --- STEP 1: Liveness and Hijack Check ---
         is_live = False
         for protocol in ['http', 'socks4', 'socks5']:
             result = self._send_query_internal(proxy=f"{protocol}://{proxy}", url=self.LIVENESS_CHECK_URL)
@@ -161,7 +154,6 @@ class ProxyChecker:
         if not is_live:
             return False
 
-        # --- STEP 2: Anonymity Check (only if proxy is live) ---
         protocols = {}
         timeout = 0
         for protocol in ['http', 'socks4', 'socks5']:
