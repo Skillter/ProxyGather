@@ -120,8 +120,6 @@ def main():
                             print(f"\n[SUCCESS] Proxy: {proxy_line:<22} | Anonymity: {details['anonymity']:<11} | Protocols: {','.join(details['protocols']):<15} | Timeout: {details['timeout']}ms")
                             if len(working_proxies['all']) % SAVE_BATCH_SIZE == 0:
                                 _save_working_proxies(working_proxies, args.prepend_protocol, now_str)
-                        else:
-                            print(".", end="", flush=True)
                     except Exception as exc:
                         print(f"\n[ERROR] An exception occurred while checking proxy {proxy_from_future}: {exc}")
         
@@ -138,20 +136,25 @@ def main():
                     print(f"\n[SUCCESS] Proxy: {proxy_line:<22} | Anonymity: {details['anonymity']:<11} | Protocols: {','.join(details['protocols']):<15} | Timeout: {details['timeout']}ms")
                     if len(working_proxies['all']) % SAVE_BATCH_SIZE == 0:
                         _save_working_proxies(working_proxies, args.prepend_protocol, now_str)
-                else:
-                    print(".", end="", flush=True)
             except Exception as exc:
                 print(f"\n[ERROR] An exception occurred while checking proxy {proxy_from_future}: {exc}")
 
     except KeyboardInterrupt:
         print("\n\n[INTERRUPTED] User stopped the script. Shutting down threads immediately...")
-        proxies_to_recheck = list(in_flight.values())
+        
+        # --- THIS IS THE NEW, SAFE RESUME LOGIC ---
+        # 1. Get proxies that were submitted but haven't finished
+        proxies_in_flight = list(in_flight.values())
+        
+        # 2. Get all proxies that were never even read from the file
+        remaining_lines_from_file = []
+        if input_file_handle and not input_file_handle.closed:
+            remaining_lines_from_file = input_file_handle.readlines()
+            # 3. CRITICAL: Now close the handle so the file can be replaced
+            input_file_handle.close()
+
         executor.shutdown(wait=False, cancel_futures=True)
         
-        # this is the key fix: we must close the file handle before trying to replace the file
-        if input_file_handle and not input_file_handle.closed:
-            input_file_handle.close()
-            
         if "-resume" in input_filename:
             resume_filename = input_filename
             print(f"[INFO] Overwriting resume file '{resume_filename}'...")
@@ -164,11 +167,12 @@ def main():
         
         try:
             with open(temp_filename, 'w', encoding='utf-8') as f_out:
-                for proxy in proxies_to_recheck:
+                # 4. Write both lists to the temp file to capture everything
+                for proxy in proxies_in_flight:
                     f_out.write(proxy + '\n')
-                # we don't need to read the rest of the file handle because we already closed it
-                # and the list of proxies to recheck already contains everything that wasn't processed
+                f_out.writelines(remaining_lines_from_file)
             
+            # 5. Atomically replace the old file with the complete new one
             os.replace(temp_filename, resume_filename)
             print(f"[SUCCESS] Resume file updated. To continue, run the script with --file {resume_filename}")
 
