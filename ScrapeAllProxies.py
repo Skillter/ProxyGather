@@ -20,7 +20,6 @@ from automation_scrapers.openproxylist_scraper import scrape_from_openproxylist
 # --- Configuration ---
 SITES_FILE = 'sites-to-get-proxies-from.txt'
 OUTPUT_FILE = 'scraped-proxies.txt'
-# MAX_WORKERS is now controlled via CLI arguments.
 
 def save_proxies_to_file(proxies: list, filename: str):
     """Saves a list of proxies to a text file, one per line, using UTF-8 encoding."""
@@ -64,28 +63,23 @@ def main():
     parser.add_argument('--remove-dead-links', action='store_true', help="Removes URLs from the sites file that return no proxies.")
     args = parser.parse_args()
 
-    # --- MODIFIED: Identify special case scrapers that need a dedicated thread count ---
-    # We use the automation scraper as the stand-in for the "solana" scraper.
     SPECIAL_CASE_SCRAPER_NAMES = ['OpenProxyList']
     
-    # A dictionary to hold the functions to run
     all_scraper_tasks = {
-        # 'ProxyScrape API': fetch_from_api,
-        # 'ProxyDB': scrape_all_from_proxydb,
-        # 'Geonode API': scrape_from_geonode_api,
-        # 'CheckerProxy Archive': scrape_checkerproxy_archive,
-        # 'ProxyList.org': scrape_from_proxylistorg,
-        # 'XSEO.in': lambda: scrape_from_xseo(True),
-        # 'GoLogin/Geoxy API': lambda: scrape_from_gologin_api(True),
-        # 'OpenProxyList': lambda: scrape_from_openproxylist(True),
+        'ProxyScrape API': fetch_from_api,
+        'ProxyDB': scrape_all_from_proxydb,
+        'Geonode API': scrape_from_geonode_api,
+        'CheckerProxy Archive': scrape_checkerproxy_archive,
+        'ProxyList.org': scrape_from_proxylistorg,
+        'XSEO.in': lambda: scrape_from_xseo(True),
+        'GoLogin/Geoxy API': lambda: scrape_from_gologin_api(True),
+        'OpenProxyList': lambda: scrape_from_openproxylist(True),
     }
 
-     # Prepare the general scraper task
     try:
         scrape_targets = parse_sites_file(SITES_FILE)
         if scrape_targets:
             def general_scraper_task():
-                # Pass the main threads argument to the general scraper
                 return scrape_proxies(scrape_targets, verbose=True, max_workers=args.threads)
             all_scraper_tasks[f'Websites ({SITES_FILE})'] = general_scraper_task
         else:
@@ -94,48 +88,57 @@ def main():
         print(f"[ERROR] The file '{SITES_FILE}' was not found. Skipping generic website scraping.")
     
     results = {}
-    
-    # --- MODIFIED: Split tasks into normal, special, and general ---
-    special_case_tasks = {name: func for name, func in all_scraper_tasks.items() if name in SPECIAL_CASE_SCRAPER_NAMES}
-    normal_dedicated_tasks = {name: func for name, func in all_scraper_tasks.items() if name not in SPECIAL_CASE_SCRAPER_NAMES and not name.startswith("Websites")}
-    general_task = all_scraper_tasks.get(f'Websites ({SITES_FILE})')
-
-    # --- Run scraper tasks with their respective thread counts ---
-    if special_case_tasks:
-        print(f"--- Starting {len(special_case_tasks)} special-case scraper(s) with {args.solana_threads} threads ---")
-        with ThreadPoolExecutor(max_workers=args.solana_threads) as executor:
-            future_to_scraper = {executor.submit(func): name for name, func in special_case_tasks.items()}
-            for future in as_completed(future_to_scraper):
-                name = future_to_scraper[future]
-                try: results[name] = future.result()
-                except Exception as e: results[name] = []; print(f"[ERROR] Scraper '{name}' failed: {e}")
-                print(f"[COMPLETED] '{name}' finished, found {len(results[name])} proxies.")
-
-    if normal_dedicated_tasks:
-        print(f"--- Starting {len(normal_dedicated_tasks)} dedicated scraper(s) with {args.threads} threads ---")
-        with ThreadPoolExecutor(max_workers=args.threads) as executor:
-            future_to_scraper = {executor.submit(func): name for name, func in normal_dedicated_tasks.items()}
-            for future in as_completed(future_to_scraper):
-                name = future_to_scraper[future]
-                try: results[name] = future.result()
-                except Exception as e: results[name] = []; print(f"[ERROR] Scraper '{name}' failed: {e}")
-                print(f"[COMPLETED] '{name}' finished, found {len(results[name])} proxies.")
-    
     successful_general_urls = []
-    if general_task:
-        name = f'Websites ({SITES_FILE})'
-        print(f"--- [RUNNING] '{name}' with {args.threads} threads ---")
-        try:
-            proxies_found, successful_general_urls = general_task()
-            results[name] = proxies_found
-            print(f"[COMPLETED] '{name}' finished, found {len(results[name])} proxies.")
-        except Exception as e:
-            print(f"[ERROR] Scraper '{name}' failed: {e}")
-            results[name] = []
+    
+    special_case_tasks = {name: func for name, func in all_scraper_tasks.items() if name in SPECIAL_CASE_SCRAPER_NAMES}
+    normal_tasks = {name: func for name, func in all_scraper_tasks.items() if name not in SPECIAL_CASE_SCRAPER_NAMES}
+
+    # we manage the executors manually to run them at the same time
+    special_executor = ThreadPoolExecutor(max_workers=args.solana_threads, thread_name_prefix='SolanaScraper')
+    normal_executor = ThreadPoolExecutor(max_workers=args.threads, thread_name_prefix='NormalScraper')
+
+    try:
+        future_to_scraper = {}
+        
+        print(f"--- Submitting {len(special_case_tasks)} special-case scraper(s) to a pool of {args.solana_threads} threads ---")
+        for name, func in special_case_tasks.items():
+            future = special_executor.submit(func)
+            future_to_scraper[future] = name
+
+        print(f"--- Submitting {len(normal_tasks)} normal scraper(s) to a pool of {args.threads} threads ---")
+        for name, func in normal_tasks.items():
+            future = normal_executor.submit(func)
+            future_to_scraper[future] = name
+
+        print("\n--- All scrapers submitted. Waiting for results... ---")
+
+        for future in as_completed(future_to_scraper):
+            name = future_to_scraper[future]
+            try:
+                result_data = future.result()
+                # the general scraper is the only one that returns a tuple
+                if name.startswith('Websites'):
+                    proxies_found, urls = result_data
+                    results[name] = proxies_found
+                    successful_general_urls.extend(urls)
+                else:
+                    results[name] = result_data
+                
+                print(f"[COMPLETED] '{name}' finished, found {len(results.get(name, []))} proxies.")
+            except Exception as e:
+                results[name] = []
+                print(f"[ERROR] Scraper '{name}' failed: {e}")
+
+    finally:
+        # always make sure to shut down the pools
+        special_executor.shutdown()
+        normal_executor.shutdown()
 
     print("\n--- Combining and processing all results ---")
     combined_proxies = []
-    for proxy_list in results.values(): combined_proxies.extend(proxy_list)
+    for proxy_list in results.values():
+        if proxy_list: combined_proxies.extend(proxy_list)
+        
     final_proxies = sorted(list(set(p for p in combined_proxies if p and p.strip())))
     
     print("\n--- Summary ---")
