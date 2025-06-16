@@ -9,6 +9,7 @@
 **/*proxies*.json
 **/codebase-txt
 **/credentials.*
+**/mubeng-log*.*
 
 !**/sites-to-get-proxies-from.txt
 getproxy/proxy-lists/
