@@ -6,8 +6,6 @@ from selenium.webdriver.common.by import By
 from selenium.common.exceptions import TimeoutException
 from typing import List
 
-from CloudflareBypassForScraping.CloudflareBypasser import CloudflareBypasser
-
 
 # --- Import our powerful, centralized extraction function ---
 from scrapers.proxy_scraper import extract_proxies_from_content
