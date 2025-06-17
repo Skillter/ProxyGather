@@ -13,13 +13,10 @@ SAVE_BATCH_SIZE = 25
 
 def _save_working_proxies(proxy_data, prepend_protocol, output_base, is_final=False):
     """Saves the working proxies, creating the output directory if needed."""
-    # Split the base name and extension to insert the protocol correctly
     base, ext = os.path.splitext(output_base)
-    # If the user didn't provide an extension, default to .txt
     if not ext:
         ext = ".txt"
 
-    # check once for the base directory
     directory = os.path.dirname(base)
     if directory and not os.path.exists(directory):
         print(f"[INFO] Creating output directory: {directory}")
@@ -27,7 +24,6 @@ def _save_working_proxies(proxy_data, prepend_protocol, output_base, is_final=Fa
 
     for protocol, proxies_set in proxy_data.items():
         if not proxies_set: continue
-        # Construct the filename correctly: e.g., 'path/to/base-http.txt'
         filename = f"{base}-{protocol}{ext}"
         try:
             with open(filename, 'w', encoding='utf-8') as f:
@@ -117,6 +113,8 @@ def main():
         help="Timeout for each proxy check. E.g., '500ms', '10s', '8'. Default is 8 seconds."
     )
     parser.add_argument('--prepend-protocol', action='store_true', help="Prepend protocol to proxies in specific files.")
+    # --- NEW: Verbose flag ---
+    parser.add_argument('-v', '--verbose', action='store_true', help="Enable detailed logging for failures and diagnostics.")
     args = parser.parse_args()
 
     try:
@@ -131,8 +129,9 @@ def main():
         print("[ERROR] No proxies to check after loading files. Exiting.")
         return
 
+    # --- Pass the verbose flag to the checker ---
     print("\n[INFO] Initializing Proxy Checker...")
-    checker = ProxyChecker(timeout=timeout)
+    checker = ProxyChecker(timeout=timeout, verbose=args.verbose)
     if not checker.ip:
         print("[ERROR] Could not determine your public IP. Aborting check.")
         return
@@ -169,13 +168,16 @@ def main():
                             working_proxies['all'].add(proxy_line)
                             for proto in details.get('protocols', []):
                                 if proto in working_proxies: working_proxies[proto].add(proxy_line)
+                            # SUCCESS messages are always printed
                             print(f"\n[SUCCESS] Proxy: {proxy_line:<22} | Anonymity: {details['anonymity']:<11} | Protocols: {','.join(details['protocols']):<15} | Timeout: {details['timeout']}ms")
                             if len(working_proxies['all']) % SAVE_BATCH_SIZE == 0:
                                 _save_working_proxies(working_proxies, args.prepend_protocol, output_base_name)
-                        else:
+                        elif args.verbose:
+                            # only print dots if in verbose mode
                             print(".", end="", flush=True)
                     except Exception as exc:
-                        print(f"\n[ERROR] An exception occurred while checking proxy {proxy_from_future}: {exc}")
+                        if args.verbose:
+                            print(f"\n[ERROR] An exception occurred while checking proxy {proxy_from_future}: {exc}")
         
         print("\n[INFO] All proxies have been submitted. Waiting for the last checks to complete...")
         for future_done in as_completed(in_flight):
@@ -190,10 +192,11 @@ def main():
                     print(f"\n[SUCCESS] Proxy: {proxy_line:<22} | Anonymity: {details['anonymity']:<11} | Protocols: {','.join(details['protocols']):<15} | Timeout: {details['timeout']}ms")
                     if len(working_proxies['all']) % SAVE_BATCH_SIZE == 0:
                         _save_working_proxies(working_proxies, args.prepend_protocol, output_base_name)
-                else:
+                elif args.verbose:
                     print(".", end="", flush=True)
             except Exception as exc:
-                print(f"\n[ERROR] An exception occurred while checking proxy {proxy_from_future}: {exc}")
+                if args.verbose:
+                    print(f"\n[ERROR] An exception occurred while checking proxy {proxy_from_future}: {exc}")
 
     except KeyboardInterrupt:
         print("\n\n[INTERRUPTED] User stopped the script. Shutting down threads immediately...")
@@ -203,14 +206,15 @@ def main():
         proxies_to_recheck.update(in_flight.values())
         
         if args.output:
-             resume_filename = f"{args.output}-resume.txt"
+             base, ext = os.path.splitext(args.output)
+             if not ext: ext = ".txt"
+             resume_filename = f"{base}-resume{ext}"
         else:
              resume_filename = f"proxies-to-resume-{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.txt"
              
         print(f"[INFO] Saving {len(proxies_to_recheck)} remaining proxies to '{resume_filename}'...")
         
         try:
-            # create the directory for the resume file if it doesn't exist
             directory = os.path.dirname(resume_filename)
             if directory and not os.path.exists(directory):
                 os.makedirs(directory)
@@ -219,7 +223,7 @@ def main():
                 for proxy in sorted(list(proxies_to_recheck)):
                     f_out.write(proxy + '\n')
             
-            print(f"[SUCCESS] Resume file created. To continue, run with --input {resume_filename}")
+            print(f"[SUCCESS] Resume file created. To continue, run with --input '{resume_filename}'")
         except Exception as e:
             print(f"\n[ERROR] Could not save resume file: {e}")
 
