@@ -123,7 +123,7 @@ def scrape_from_openproxylist(verbose: bool = True) -> List[str]:
                     break
 
                 page_num += 1
-                time.sleep(1)
+                # time.sleep(1) # Remove not needed cooldown
 
             except requests.RequestException as e:
                 if verbose:
