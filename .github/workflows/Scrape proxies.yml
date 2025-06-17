@@ -26,10 +26,10 @@ jobs:
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
     - name: Run the proxy scraper
       run: |
-        python .\ScrapeAllProxies.py --output proxies/scraped-proxies.txt
+        python ScrapeAllProxies.py --output proxies/scraped-proxies.txt
     - name: Run the proxy checker
       run: |
-        python .\CheckProxies.py --input proxies/scraped-proxies.txt --output proxies/working-proxies.txt --threads 3000 --timeout 2s
+        python CheckProxies.py --input proxies/scraped-proxies.txt --output proxies/working-proxies.txt --threads 3000 --timeout 2s
     # commit the changes
     - name: Commit and push
       uses: stefanzweifel/git-auto-commit-action@v5
