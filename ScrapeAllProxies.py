@@ -82,10 +82,15 @@ def main():
         'ProxyHttp': scrape_from_proxyhttp,
         'OpenProxyList': lambda: scrape_from_openproxylist(True),
         'Webshare': lambda: scrape_from_webshare(True),
-        'Hide.mn': lambda: scrape_from_hidemn(True),
+        # 'Hide.mn': lambda: scrape_from_hidemn(True), # NOT WORKING, uses turnstile
     }
     
-    SPECIAL_CASE_SCRAPER_NAMES = ['OpenProxyList', 'Webshare', 'Hide.mn']
+    SPECIAL_CASE_SCRAPER_NAMES = [
+        'OpenProxyList', 
+        'Webshare', 
+        # 'Hide.mn', # NOT WORKING, uses turnstile
+    ]
+
     general_scraper_name = f'Websites'
     
     all_scraper_names = sorted(list(all_scraper_tasks.keys()) + [general_scraper_name])
