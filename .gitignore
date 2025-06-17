@@ -11,6 +11,8 @@
 **/credentials.*
 **/mubeng-log*.*
 **/CloudflareBypassForScraping
+getproxy/proxy-lists/
+
 
 !**/sites-to-get-proxies-from.txt
-getproxy/proxy-lists/
+!/proxies/*.txt
