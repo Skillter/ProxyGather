@@ -1,6 +1,7 @@
 import sys
 import json
 import argparse
+import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Dict, Union, Tuple
 
@@ -14,12 +15,20 @@ from scrapers.proxylistorg_scraper import scrape_from_proxylistorg
 from scrapers.xseo_scraper import scrape_from_xseo
 from scrapers.gologin_scraper import scrape_from_gologin_api
 from scrapers.spysone_scraper import scrape_from_spysone
-from automation_scrapers.openproxylist_scraper import scrape_from_openproxylist
+from scrapers.proxyhttp_scraper import scrape_from_proxyhttp
 
+from automation_scrapers.openproxylist_scraper import scrape_from_openproxylist
+from automation_scrapers.webshare_scraper import scrape_from_webshare
+from automation_scrapers.hidemn_scraper import scrape_from_hidemn
 
 # --- Configuration ---
 SITES_FILE = 'sites-to-get-proxies-from.txt'
 OUTPUT_FILE = 'scraped-proxies.txt'
+
+# This matches IPs in private, reserved, or special-use ranges that cannot be public proxies
+INVALID_IP_REGEX = re.compile(
+    r"^(10\.|127\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.|169\.254\.|0\.|2(2[4-9]|3[0-9])\.|2(4[0-9]|5[0-5])\.)"
+)
 
 def save_proxies_to_file(proxies: list, filename: str):
     """Saves a list of proxies to a text file, one per line, using UTF-8 encoding."""
@@ -63,7 +72,8 @@ def main():
     parser.add_argument('--remove-dead-links', action='store_true', help="Removes URLs from the sites file that return no proxies.")
     args = parser.parse_args()
 
-    SPECIAL_CASE_SCRAPER_NAMES = ['OpenProxyList']
+
+    SPECIAL_CASE_SCRAPER_NAMES = ['OpenProxyList', 'Webshare.io']
     
     all_scraper_tasks = {
         'ProxyScrape API': fetch_from_api,
@@ -73,8 +83,13 @@ def main():
         'ProxyList.org': scrape_from_proxylistorg,
         'XSEO.in': lambda: scrape_from_xseo(True),
         'GoLogin/Geoxy API': lambda: scrape_from_gologin_api(True),
+        'ProxyHttp.net': scrape_from_proxyhttp,
+
         'OpenProxyList': lambda: scrape_from_openproxylist(True),
+        'Webshare.io': lambda: scrape_from_webshare(True),
+        'Hide.mn': lambda: scrape_from_hidemn(True),
     }
+
 
     try:
         scrape_targets = parse_sites_file(SITES_FILE)
@@ -139,14 +154,28 @@ def main():
     for proxy_list in results.values():
         if proxy_list: combined_proxies.extend(proxy_list)
         
-    final_proxies = sorted(list(set(p for p in combined_proxies if p and p.strip())))
+    # deduplicate       
+    unique_proxies_before_filter = set(p for p in combined_proxies if p and p.strip())
     
+    # filter out invalid 
+    final_proxies = {p for p in unique_proxies_before_filter if not INVALID_IP_REGEX.match(p)}
+    
+
+    spam_count = len(unique_proxies_before_filter) - len(final_proxies)
+    if spam_count > 0:
+        print(f"[INFO] Removed {spam_count} spam/invalid proxies from reserved IP ranges.")
+        
+
+    sorted_final_proxies = sorted(list(final_proxies))
+
     print("\n--- Summary ---")
     for name in sorted(results.keys()): print(f"Found {len(results.get(name, []))} proxies from {name}.")
-    print(f"\nTotal unique proxies: {len(final_proxies)}")
+    print(f"\nTotal unique & valid proxies: {len(sorted_final_proxies)}")
 
-    if final_proxies: save_proxies_to_file(final_proxies, OUTPUT_FILE)
-    else: print("\nCould not find any proxies from any source.")
+    if sorted_final_proxies:
+        save_proxies_to_file(sorted_final_proxies, OUTPUT_FILE)
+    else:
+        print("\nCould not find any proxies from any source.")
 
     if args.remove_dead_links:
         print(f"\n[INFO] --remove-dead-links is active. Updating '{SITES_FILE}'...")
