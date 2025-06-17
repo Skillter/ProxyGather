@@ -16,16 +16,14 @@ from scrapers.xseo_scraper import scrape_from_xseo
 from scrapers.gologin_scraper import scrape_from_gologin_api
 from scrapers.spysone_scraper import scrape_from_spysone
 from scrapers.proxyhttp_scraper import scrape_from_proxyhttp
-
 from automation_scrapers.openproxylist_scraper import scrape_from_openproxylist
 from automation_scrapers.webshare_scraper import scrape_from_webshare
 from automation_scrapers.hidemn_scraper import scrape_from_hidemn
 
 # --- Configuration ---
 SITES_FILE = 'sites-to-get-proxies-from.txt'
-OUTPUT_FILE = 'scraped-proxies.txt'
+DEFAULT_OUTPUT_FILE = 'scraped-proxies.txt'
 
-# This matches IPs in private, reserved, or special-use ranges that cannot be public proxies
 INVALID_IP_REGEX = re.compile(
     r"^(10\.|127\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.|169\.254\.|0\.|2(2[4-9]|3[0-9])\.|2(4[0-9]|5[0-5])\.)"
 )
@@ -66,64 +64,110 @@ def main():
     """
     Main function to run all scrapers concurrently, combine results, and save them.
     """
+    all_scraper_tasks = {
+        'ProxyScrape': fetch_from_api,
+        'ProxyDB': scrape_all_from_proxydb,
+        'Geonode': scrape_from_geonode_api,
+        'CheckerProxy': scrape_checkerproxy_archive,
+        'ProxyList.org': scrape_from_proxylistorg,
+        'XSEO': lambda: scrape_from_xseo(True),
+        'GoLogin': lambda: scrape_from_gologin_api(True),
+        'ProxyHttp': scrape_from_proxyhttp,
+        'OpenProxyList': lambda: scrape_from_openproxylist(True),
+        'Webshare': lambda: scrape_from_webshare(True),
+        'Hide.mn': lambda: scrape_from_hidemn(True),
+    }
+    
+    SPECIAL_CASE_SCRAPER_NAMES = ['OpenProxyList', 'Webshare', 'Hide.mn']
+    general_scraper_name = f'Websites'
+    
+    all_scraper_names = sorted(list(all_scraper_tasks.keys()) + [general_scraper_name])
+
     parser = argparse.ArgumentParser(description="A powerful, multi-source proxy scraper.")
+    parser.add_argument('--file', default=DEFAULT_OUTPUT_FILE, help=f"The output file for scraped proxies. Defaults to '{DEFAULT_OUTPUT_FILE}'.")
     parser.add_argument('--threads', type=int, default=50, help="Default number of threads for scrapers.")
     parser.add_argument('--solana-threads', type=int, default=3, help="Dedicated (lower) thread count for automation scrapers.")
     parser.add_argument('--remove-dead-links', action='store_true', help="Removes URLs from the sites file that return no proxies.")
+    
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument('--only', nargs='*', help="Only run the specified scrapers (case-insensitive). Pass with no values to see choices.")
+    group.add_argument('--exclude', '--except', nargs='*', help="Exclude scrapers from the run (case-insensitive). Alias: --except. Pass with no values to see choices.")
+    
     args = parser.parse_args()
 
+    if (args.only is not None and not args.only) or (args.exclude is not None and not args.exclude):
+        print("Available scraper sources are:")
+        print(f"  {general_scraper_name} - The websites from {SITES_FILE} that do not require extra logic to scrape")
+        print("Dedicated scrapers with implemented logic (Recommended):")
+        for name in all_scraper_names:
+            if (name == general_scraper_name) or (name in SPECIAL_CASE_SCRAPER_NAMES): 
+                continue
+            print(f"  {name}")
+        print("Dedicated Solana scrapers that are heavier to run:")
+        for name in SPECIAL_CASE_SCRAPER_NAMES:
+            print(f"  {name}")
+        sys.exit(0)
 
-    SPECIAL_CASE_SCRAPER_NAMES = ['OpenProxyList', 'Webshare.io']
-    
-    all_scraper_tasks = {
-        'ProxyScrape API': fetch_from_api,
-        'ProxyDB': scrape_all_from_proxydb,
-        'Geonode API': scrape_from_geonode_api,
-        'CheckerProxy Archive': scrape_checkerproxy_archive,
-        'ProxyList.org': scrape_from_proxylistorg,
-        'XSEO.in': lambda: scrape_from_xseo(True),
-        'GoLogin/Geoxy API': lambda: scrape_from_gologin_api(True),
-        'ProxyHttp.net': scrape_from_proxyhttp,
-
-        'OpenProxyList': lambda: scrape_from_openproxylist(True),
-        'Webshare.io': lambda: scrape_from_webshare(True),
-        'Hide.mn': lambda: scrape_from_hidemn(True),
-    }
-
-
+    tasks_to_run = all_scraper_tasks.copy()
     try:
         scrape_targets = parse_sites_file(SITES_FILE)
         if scrape_targets:
             def general_scraper_task():
                 return scrape_proxies(scrape_targets, verbose=True, max_workers=args.threads)
-            all_scraper_tasks[f'Websites ({SITES_FILE})'] = general_scraper_task
-        else:
-            print(f"[WARN] The URL file '{SITES_FILE}' is empty. Skipping generic website scraping.")
+            tasks_to_run[general_scraper_name] = general_scraper_task
     except FileNotFoundError:
-        print(f"[ERROR] The file '{SITES_FILE}' was not found. Skipping generic website scraping.")
-    
+        print(f"[WARN] The URL file '{SITES_FILE}' was not found. The '{general_scraper_name}' scraper will not be available.")
+
+    # --- NEW: Case-insensitive filtering logic ---
+    scraper_name_map = {name.lower(): name for name in list(tasks_to_run.keys())}
+
+    def resolve_user_input(user_list):
+        resolved_names = set()
+        for name in user_list:
+            lower_name = name.lower()
+            if lower_name in scraper_name_map:
+                resolved_names.add(scraper_name_map[lower_name])
+            else:
+                print(f"[WARN] Unknown scraper source '{name}' will be ignored.")
+        return resolved_names
+
+    if args.only:
+        sources_to_run = resolve_user_input(args.only)
+        tasks_to_run = {name: func for name, func in tasks_to_run.items() if name in sources_to_run}
+        print(f"--- Running ONLY the following scrapers: {', '.join(tasks_to_run.keys())} ---")
+    elif args.exclude:
+        sources_to_exclude = resolve_user_input(args.exclude)
+        for name in sources_to_exclude:
+            tasks_to_run.pop(name, None)
+        print(f"--- EXCLUDING the following scrapers: {', '.join(sources_to_exclude)} ---")
+
+    if not tasks_to_run:
+        print("[ERROR] No scrapers selected to run. Exiting.")
+        sys.exit(1)
+
     results = {}
     successful_general_urls = []
     
-    special_case_tasks = {name: func for name, func in all_scraper_tasks.items() if name in SPECIAL_CASE_SCRAPER_NAMES}
-    normal_tasks = {name: func for name, func in all_scraper_tasks.items() if name not in SPECIAL_CASE_SCRAPER_NAMES}
+    special_case_tasks = {name: func for name, func in tasks_to_run.items() if name in SPECIAL_CASE_SCRAPER_NAMES}
+    normal_tasks = {name: func for name, func in tasks_to_run.items() if name not in SPECIAL_CASE_SCRAPER_NAMES}
 
-    # we manage the executors manually to run them at the same time
     special_executor = ThreadPoolExecutor(max_workers=args.solana_threads, thread_name_prefix='SolanaScraper')
     normal_executor = ThreadPoolExecutor(max_workers=args.threads, thread_name_prefix='NormalScraper')
 
     try:
         future_to_scraper = {}
         
-        print(f"--- Submitting {len(special_case_tasks)} special-case scraper(s) to a pool of {args.solana_threads} threads ---")
-        for name, func in special_case_tasks.items():
-            future = special_executor.submit(func)
-            future_to_scraper[future] = name
+        if special_case_tasks:
+            print(f"\n--- Submitting {len(special_case_tasks)} special-case scraper(s) to a pool of {args.solana_threads} threads ---")
+            for name, func in special_case_tasks.items():
+                future = special_executor.submit(func)
+                future_to_scraper[future] = name
 
-        print(f"--- Submitting {len(normal_tasks)} normal scraper(s) to a pool of {args.threads} threads ---")
-        for name, func in normal_tasks.items():
-            future = normal_executor.submit(func)
-            future_to_scraper[future] = name
+        if normal_tasks:
+            print(f"--- Submitting {len(normal_tasks)} normal scraper(s) to a pool of {args.threads} threads ---")
+            for name, func in normal_tasks.items():
+                future = normal_executor.submit(func)
+                future_to_scraper[future] = name
 
         print("\n--- All scrapers submitted. Waiting for results... ---")
 
@@ -131,7 +175,6 @@ def main():
             name = future_to_scraper[future]
             try:
                 result_data = future.result()
-                # the general scraper is the only one that returns a tuple
                 if name.startswith('Websites'):
                     proxies_found, urls = result_data
                     results[name] = proxies_found
@@ -145,7 +188,6 @@ def main():
                 print(f"[ERROR] Scraper '{name}' failed: {e}")
 
     finally:
-        # always make sure to shut down the pools
         special_executor.shutdown()
         normal_executor.shutdown()
 
@@ -154,26 +196,22 @@ def main():
     for proxy_list in results.values():
         if proxy_list: combined_proxies.extend(proxy_list)
         
-    # deduplicate       
     unique_proxies_before_filter = set(p for p in combined_proxies if p and p.strip())
     
-    # filter out invalid 
     final_proxies = {p for p in unique_proxies_before_filter if not INVALID_IP_REGEX.match(p)}
     
-
     spam_count = len(unique_proxies_before_filter) - len(final_proxies)
     if spam_count > 0:
         print(f"[INFO] Removed {spam_count} spam/invalid proxies from reserved IP ranges.")
         
-
     sorted_final_proxies = sorted(list(final_proxies))
-
+    
     print("\n--- Summary ---")
     for name in sorted(results.keys()): print(f"Found {len(results.get(name, []))} proxies from {name}.")
     print(f"\nTotal unique & valid proxies: {len(sorted_final_proxies)}")
 
     if sorted_final_proxies:
-        save_proxies_to_file(sorted_final_proxies, OUTPUT_FILE)
+        save_proxies_to_file(sorted_final_proxies, args.file)
     else:
         print("\nCould not find any proxies from any source.")
 
