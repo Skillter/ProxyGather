@@ -50,6 +50,8 @@ DEFAULT_HEADERS = {
 
 PROXY_VALIDATION_REGEX = re.compile(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{1,5}$')
 
+PAGINATED_RATELIMIT_DELAY = 0.8 # In seconds, before it was 1.5
+
 def _recursive_json_search_and_extract(data: any, proxies_found: set):
     if isinstance(data, dict):
         for key in ['address', 'proxy', 'addr', 'ip_port']:
@@ -190,7 +192,7 @@ def scrape_proxies(
                     break
 
                 page_num += 1
-                time.sleep(1.5)
+                time.sleep(PAGINATED_RATELIMIT_DELAY)
             
             if found_any_on_paginated_url:
                 successful_urls.add(base_url) # Mark the base URL as successful
