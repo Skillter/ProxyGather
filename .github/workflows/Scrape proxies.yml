@@ -9,7 +9,7 @@ on:
   workflow_dispatch: # be able to optionally run it manually
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
