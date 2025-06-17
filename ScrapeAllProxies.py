@@ -1,3 +1,4 @@
+import os
 import sys
 import json
 import argparse
@@ -29,8 +30,14 @@ INVALID_IP_REGEX = re.compile(
 )
 
 def save_proxies_to_file(proxies: list, filename: str):
-    """Saves a list of proxies to a text file, one per line, using UTF-8 encoding."""
+    """Saves a list of proxies to a text file, creating the directory if it doesn't exist."""
     try:
+        # this logic correctly handles creating directories like "proxies/"
+        directory = os.path.dirname(filename)
+        if directory and not os.path.exists(directory):
+            print(f"[INFO] Creating output directory: {directory}")
+            os.makedirs(directory)
+
         with open(filename, 'w', encoding='utf-8') as f:
             for proxy in proxies:
                 f.write(proxy + '\n')
@@ -84,7 +91,7 @@ def main():
     all_scraper_names = sorted(list(all_scraper_tasks.keys()) + [general_scraper_name])
 
     parser = argparse.ArgumentParser(description="A powerful, multi-source proxy scraper.")
-    parser.add_argument('--file', default=DEFAULT_OUTPUT_FILE, help=f"The output file for scraped proxies. Defaults to '{DEFAULT_OUTPUT_FILE}'.")
+    parser.add_argument('--output', default=DEFAULT_OUTPUT_FILE, help=f"The output file for scraped proxies. Defaults to '{DEFAULT_OUTPUT_FILE}'.")
     parser.add_argument('--threads', type=int, default=50, help="Default number of threads for scrapers.")
     parser.add_argument('--solana-threads', type=int, default=3, help="Dedicated (lower) thread count for automation scrapers.")
     parser.add_argument('--remove-dead-links', action='store_true', help="Removes URLs from the sites file that return no proxies.")
@@ -118,7 +125,6 @@ def main():
     except FileNotFoundError:
         print(f"[WARN] The URL file '{SITES_FILE}' was not found. The '{general_scraper_name}' scraper will not be available.")
 
-    # --- NEW: Case-insensitive filtering logic ---
     scraper_name_map = {name.lower(): name for name in list(tasks_to_run.keys())}
 
     def resolve_user_input(user_list):
@@ -211,7 +217,7 @@ def main():
     print(f"\nTotal unique & valid proxies: {len(sorted_final_proxies)}")
 
     if sorted_final_proxies:
-        save_proxies_to_file(sorted_final_proxies, args.file)
+        save_proxies_to_file(sorted_final_proxies, args.output)
     else:
         print("\nCould not find any proxies from any source.")
 
