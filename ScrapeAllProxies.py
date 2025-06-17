@@ -97,13 +97,13 @@ def main():
 
     parser = argparse.ArgumentParser(description="A powerful, multi-source proxy scraper.")
     parser.add_argument('--output', default=DEFAULT_OUTPUT_FILE, help=f"The output file for scraped proxies. Defaults to '{DEFAULT_OUTPUT_FILE}'.")
-    parser.add_argument('--threads', type=int, default=50, help="Default number of threads for scrapers.")
-    parser.add_argument('--solana-threads', type=int, default=3, help="Dedicated (lower) thread count for automation scrapers.")
+    parser.add_argument('--threads', type=int, default=50, help="Number of threads for scrapers. Default: 50")
+    parser.add_argument('--solana-threads', type=int, default=3, help="Dedicated (lower) thread count for automation scrapers. Default: 3")
     parser.add_argument('--remove-dead-links', action='store_true', help="Removes URLs from the sites file that return no proxies.")
     
     group = parser.add_mutually_exclusive_group()
     group.add_argument('--only', nargs='*', help="Only run the specified scrapers (case-insensitive). Pass with no values to see choices.")
-    group.add_argument('--exclude', '--except', nargs='*', help="Exclude scrapers from the run (case-insensitive). Alias: --except. Pass with no values to see choices.")
+    group.add_argument('--exclude', '--except', nargs='*', help="Exclude scrapers from the run (case-insensitive). Pass with no values to see choices.")
     
     args = parser.parse_args()
 
