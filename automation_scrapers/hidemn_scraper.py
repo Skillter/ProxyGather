@@ -18,6 +18,8 @@ DELAY_SECONDS = 2.0
 
 def scrape_from_hidemn(verbose: bool = True) -> List[str]:
     """
+    NOT WORKING.
+    hide.mn uses Cloudflare's turnstile; an advanced anti-bot security measure.
     A robust semi-automated scraper for hide.mn. It waits for the user
     to solve the advanced Cloudflare challenge and then scrapes the content.
     """
