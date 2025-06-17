@@ -36,8 +36,9 @@ class ProxyChecker:
     LIVENESS_CHECK_URL = "http://www.google.com/"
     LIVENESS_CHECK_STRING = "Google"
 
-    def __init__(self, timeout: float = 10.0):
+    def __init__(self, timeout: float = 10.0, verbose: bool = False):
         self.timeout_ms = int(timeout * 1000)
+        self.verbose = verbose # store the verbose flag
         
         initial_judges = [
             'http://proxyjudge.us/azenv.php',
@@ -57,7 +58,7 @@ class ProxyChecker:
             if isinstance(result, dict) and 'REMOTE_ADDR' in result.get('response', ''):
                 self.live_judges.append(judge)
                 print(f"[INFO]   ... Judge is VALID: {judge}")
-            else:
+            elif self.verbose:
                 print(f"[WARN]   ... Judge is DEAD or returned INVALID content: {judge}")
         
         if not self.live_judges:
@@ -137,18 +138,19 @@ class ProxyChecker:
                 if self.LIVENESS_CHECK_STRING in result.get('response', ''):
                     is_live = True
                     break
-                else:
+                elif self.verbose:
                     print(f"\n[HIJACK?] Proxy {proxy} connected to Google but returned unexpected content.")
-                    return False
+                return False
             
             elif result is None:
                 continue
 
             elif isinstance(result, int):
-                if result == 407:
-                    print(f"\n[AUTH FAILED] Proxy {proxy} requires a password (on Google check).")
-                else:
-                    print(f"\n[GOOGLE FAILED] Proxy {proxy} failed liveness check, returned HTTP {result}.")
+                if self.verbose:
+                    if result == 407:
+                        print(f"\n[AUTH FAILED] Proxy {proxy} requires a password (on Google check).")
+                    else:
+                        print(f"\n[GOOGLE FAILED] Proxy {proxy} failed liveness check, returned HTTP {result}.")
                 return False
 
         if not is_live:
@@ -169,7 +171,7 @@ class ProxyChecker:
                     break
 
                 if isinstance(result, int):
-                    if attempt == self.JUDGE_RETRY_ATTEMPTS - 1:
+                    if attempt == self.JUDGE_RETRY_ATTEMPTS - 1 and self.verbose:
                         if result == 407:
                             print(f"\n[AUTH FAILED] Proxy {proxy} requires a password.")
                         elif result == 404:
