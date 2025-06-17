@@ -1,0 +1,35 @@
+# This workflow will install Python dependencies, run tests and lint with a single version of Python
+# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python
+
+name: Scrape proxies
+
+on:
+  schedule:
+    - cron: '*/30 * * * *' # run every week
+  workflow_dispatch: # be able to optionally run it manually
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up Python 3.12.9
+      uses: actions/setup-python@v3
+      with:
+        python-version: "3.12.9"
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+    - name: Run ScrapeAllProxies.py
+      run: |
+        python .\ScrapeAllProxies.py
+    # commit the changes
+    - name: Commit and push
+      uses: stefanzweifel/git-auto-commit-action@v5
+      with:
+        commit_message: "Re-scrape proxies"
+        file_pattern: scraped-proxies.txt # only commit if scraped-proxies.txt has changed
