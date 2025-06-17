@@ -5,7 +5,7 @@ name: Scrape and check proxies
 
 on:
   schedule:
-    - cron: '*/30 * * * *' # run every 30 minutes
+    - cron: '0 * * * *' # run every 60 minutes
   workflow_dispatch: # be able to optionally run it manually
 
 permissions:
