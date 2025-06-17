@@ -109,7 +109,7 @@ def main():
         default=None,
         help="The base name for output files (e.g., 'results/verified'). If not provided, a timestamped name will be used."
     )
-    parser.add_argument('--threads', type=int, default=100, help="Number of threads for checking proxies.")
+    parser.add_argument('--threads', type=int, default=100, help="Number of threads for checking proxies. Default: 100")
     parser.add_argument(
         '--timeout', 
         type=str, 
