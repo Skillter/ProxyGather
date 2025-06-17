@@ -1,3 +1,4 @@
 requests
 undetected-chromedriver
 pycurl
+distutils # For some reason it's required by undetected_chromedriver but only when running through Github Actions
