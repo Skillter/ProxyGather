@@ -120,6 +120,15 @@ goto :MAIN_LOOP
 :: final exit sequence
 cls
 echo.
+echo Checking for "Duplicate" file to clean up...
+if exist "Duplicate" (
+    del /F /Q "Duplicate"
+    echo "Duplicate" file was found and has been removed.
+) else (
+    echo No "Duplicate" file found.
+)
+echo.
+echo ---
 echo Script finished. Total files copied: !totalFileCount!.
 echo Window will close in 3 seconds...
 timeout /t 3 /nobreak > nul
