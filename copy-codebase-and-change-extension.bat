@@ -38,7 +38,7 @@ echo Setup complete.
 
 :MAIN_LOOP
 :: Main loop for user prompts
-cls
+echo.
 echo =================================================
 echo  Fast Recursive File Copier
 echo =================================================
@@ -64,7 +64,6 @@ set /p "DEST_EXT=Enter DESTINATION extension (e.g., txt): "
 if not defined DEST_EXT (
     echo.
     echo [WARNING] No destination extension provided. Skipping...
-    timeout /t 2 /nobreak > nul
     goto :MAIN_LOOP
 )
 
@@ -112,7 +111,6 @@ for /r . %%I in ("*%SOURCE_EXT%") do (
 
 echo.
 echo Copied !sessionFileCount! file(s) in this session.
-timeout /t 2 /nobreak > nul
 goto :MAIN_LOOP
 
 
