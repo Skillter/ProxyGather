@@ -4,6 +4,16 @@ This project is a sophisticated tool designed to scrape proxies from a wide vari
 
 Additionally the scraper runs every hour on its own via GitHub Actions, ensuring the proxy lists are always fresh.
 
+If you find this project useful, **please consider giving it a star ⭐** or share it by the word of mouth. Those things help a lot. thanks.
+
+### Index
+- [What Makes This Project Different?](#so-what-makes-this-project-different-from-other-proxy-scrapers)
+- [Live Proxy Lists](#live-proxy-lists)
+- [Installation](#installation)
+- [Advanced Usage](#advanced-usage)
+- [Adding Your Own Sites](#adding-your-own-sites)
+- [Contributions](#contributions)
+
 
 ## So what makes this project different from other proxy scrapers?
 
@@ -112,6 +122,3 @@ https://api.proxies.com/get||{"Authorization": "Bearer my-token"}
 
 Contributions are what makes the open-source community thrive. Any contributions you make are **warmly welcomed**! Whether it's suggesting a new proxy source, adding a new scraper, improving the checker or fixing a bug, feel free to open an issue or send a pull request.
 *Note: The project has been developed and tested on Python 3.12.9*
-
-And if you find this project useful, **please consider giving it a star ⭐!**
-Or share it by the word of mouth. Those things help a lot. thanks.
