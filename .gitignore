@@ -11,7 +11,7 @@
 **/credentials.*
 **/mubeng-log*.*
 **/CloudflareBypassForScraping
-/*.bat
+*.bat
 **/mubeng*.exe
 getproxy/proxy-lists/
 
