@@ -2,7 +2,7 @@
 
 This project is a sophisticated tool designed to scrape proxies from a wide variety of sources and check them for validity and performance.
 
-Additionally the scraper runs every hour on its own via GitHub Actions, ensuring the proxy lists are always fresh.
+Additionally the scraper runs every 30 minutes on its own via GitHub Actions, ensuring the proxy lists are always fresh.
 
 If you find this project useful, **please consider giving it a star ⭐** or share it by the word of mouth. Those things help a lot. thanks.
 
@@ -27,7 +27,7 @@ It can parse JavaScript-obfuscated IPs, decode Base64-encoded proxies, handle pa
 
 The result is a cleaner, far more reliable list of proxies you can actually use, not just a list of open ports.
 
-*   **Automated Fresh List**: Thanks to GitHub Actions, the entire process of scraping, checking, and committing the results is automated every hour. You can simply grab the fresh working proxies from a link to the raw file.
+*   **Automated Fresh List**: Thanks to GitHub Actions, the entire process of scraping, checking, and committing the results is automated every 30 minutes. You can simply grab the fresh working proxies from a link to the raw file.
 *   **Easily add more sources**: Easily add your own targets to the `sites-to-get-proxies-from.txt` file, for the sites that don't use obfuscation.
 
 ## Live Proxy Lists
