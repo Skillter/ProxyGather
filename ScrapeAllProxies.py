@@ -71,18 +71,33 @@ def main():
     """
     Main function to run all scrapers concurrently, combine results, and save them.
     """
+    parser = argparse.ArgumentParser(description="A powerful, multi-source proxy scraper.")
+    parser.add_argument('--output', default=DEFAULT_OUTPUT_FILE, help=f"The output file for scraped proxies. Defaults to '{DEFAULT_OUTPUT_FILE}'.")
+    parser.add_argument('--threads', type=int, default=50, help="Number of threads for scrapers. Default: 50")
+    parser.add_argument('--solana-threads', type=int, default=3, help="Dedicated (lower) thread count for automation scrapers. Default: 3")
+    parser.add_argument('--remove-dead-links', action='store_true', help="Removes URLs from the sites file that return no proxies.")
+    # i added the verbose argument here
+    parser.add_argument('-v', '--verbose', action='store_true', help="Enable detailed logging for each scraper.")
+    
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument('--only', nargs='*', help="Only run the specified scrapers (case-insensitive). Pass with no values to see choices.")
+    group.add_argument('--exclude', '--except', nargs='*', help="Exclude scrapers from the run (case-insensitive). Pass with no values to see choices.")
+    
+    args = parser.parse_args()
+
+    # we define the tasks after parsing args so we can pass the verbose flag
     all_scraper_tasks = {
-        'ProxyScrape': fetch_from_api,
-        'ProxyDB': scrape_all_from_proxydb,
-        'Geonode': scrape_from_geonode_api,
-        'CheckerProxy': scrape_checkerproxy_archive,
-        'ProxyList.org': scrape_from_proxylistorg,
-        'XSEO': lambda: scrape_from_xseo(True),
-        'GoLogin': lambda: scrape_from_gologin_api(True),
-        'ProxyHttp': scrape_from_proxyhttp,
-        'OpenProxyList': lambda: scrape_from_openproxylist(True),
-        'Webshare': lambda: scrape_from_webshare(True),
-        # 'Hide.mn': lambda: scrape_from_hidemn(True), # NOT WORKING, uses turnstile
+        'ProxyScrape': lambda: fetch_from_api(verbose=args.verbose),
+        'ProxyDB': lambda: scrape_all_from_proxydb(verbose=args.verbose),
+        'Geonode': lambda: scrape_from_geonode_api(verbose=args.verbose),
+        'CheckerProxy': lambda: scrape_checkerproxy_archive(verbose=args.verbose),
+        'ProxyList.org': lambda: scrape_from_proxylistorg(verbose=args.verbose),
+        'XSEO': lambda: scrape_from_xseo(verbose=args.verbose),
+        'GoLogin': lambda: scrape_from_gologin_api(verbose=args.verbose),
+        'ProxyHttp': lambda: scrape_from_proxyhttp(verbose=args.verbose),
+        'OpenProxyList': lambda: scrape_from_openproxylist(verbose=args.verbose),
+        'Webshare': lambda: scrape_from_webshare(verbose=args.verbose),
+        # 'Hide.mn': lambda: scrape_from_hidemn(verbose=args.verbose), # NOT WORKING, uses turnstile
     }
     
     SPECIAL_CASE_SCRAPER_NAMES = [
@@ -94,18 +109,6 @@ def main():
     general_scraper_name = f'Websites'
     
     all_scraper_names = sorted(list(all_scraper_tasks.keys()) + [general_scraper_name])
-
-    parser = argparse.ArgumentParser(description="A powerful, multi-source proxy scraper.")
-    parser.add_argument('--output', default=DEFAULT_OUTPUT_FILE, help=f"The output file for scraped proxies. Defaults to '{DEFAULT_OUTPUT_FILE}'.")
-    parser.add_argument('--threads', type=int, default=50, help="Number of threads for scrapers. Default: 50")
-    parser.add_argument('--solana-threads', type=int, default=3, help="Dedicated (lower) thread count for automation scrapers. Default: 3")
-    parser.add_argument('--remove-dead-links', action='store_true', help="Removes URLs from the sites file that return no proxies.")
-    
-    group = parser.add_mutually_exclusive_group()
-    group.add_argument('--only', nargs='*', help="Only run the specified scrapers (case-insensitive). Pass with no values to see choices.")
-    group.add_argument('--exclude', '--except', nargs='*', help="Exclude scrapers from the run (case-insensitive). Pass with no values to see choices.")
-    
-    args = parser.parse_args()
 
     if (args.only is not None and not args.only) or (args.exclude is not None and not args.exclude):
         print("Available scraper sources are:")
@@ -125,7 +128,8 @@ def main():
         scrape_targets = parse_sites_file(SITES_FILE)
         if scrape_targets:
             def general_scraper_task():
-                return scrape_proxies(scrape_targets, verbose=True, max_workers=args.threads)
+                # make sure the general scraper also respects the verbose flag
+                return scrape_proxies(scrape_targets, verbose=args.verbose, max_workers=args.threads)
             tasks_to_run[general_scraper_name] = general_scraper_task
     except FileNotFoundError:
         print(f"[WARN] The URL file '{SITES_FILE}' was not found. The '{general_scraper_name}' scraper will not be available.")
