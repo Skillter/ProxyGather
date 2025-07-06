@@ -76,7 +76,6 @@ def main():
     parser.add_argument('--threads', type=int, default=50, help="Number of threads for scrapers. Default: 50")
     parser.add_argument('--solana-threads', type=int, default=3, help="Dedicated (lower) thread count for automation scrapers. Default: 3")
     parser.add_argument('--remove-dead-links', action='store_true', help="Removes URLs from the sites file that return no proxies.")
-    # i added the verbose argument here
     parser.add_argument('-v', '--verbose', action='store_true', help="Enable detailed logging for each scraper.")
     
     group = parser.add_mutually_exclusive_group()
