@@ -76,6 +76,7 @@ python ScrapeAllProxies.py --output proxies/scraped.txt --threads 75 --exclude W
 *   `--threads`: Number of concurrent threads to use for the general scrapers. (Default: 50)
 *   `--only`: Run only specific scrapers. For example: `--only Geonode ProxyDB`
 *   `--exclude`: Run all scrapers except for specific ones. For example: `--exclude Webshare`
+*   `-v`, `--verbose`: Enable detailed logging for what's being scraped.
 *   `--remove-dead-links`: Automatically remove URLs from `sites-to-get-proxies-from.txt` that yield no proxies.
 
 To see a list of all available scrapers, run: `python ScrapeAllProxies.py --only`
