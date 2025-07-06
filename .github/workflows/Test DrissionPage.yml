@@ -27,7 +27,7 @@ jobs:
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
     - name: Run the proxy scraper
       run: |
-        python ScrapeAllProxies.py --output test/scraped-proxies.txt --only OpenProxyList
+        python ScrapeAllProxies.py --output test/scraped-proxies.txt --only OpenProxyList -v
     # - name: Run the proxy checker
     #   run: |
     #     python CheckProxies.py --input test/scraped-proxies.txt --output test/working-proxies.txt --threads 3000 --timeout 2s
