@@ -4,6 +4,7 @@ import re
 from DrissionPage import ChromiumPage, ChromiumOptions 
 from typing import List
 import sys
+import os
 
 from scrapers.proxy_scraper import extract_proxies_from_content
 
@@ -27,19 +28,12 @@ def scrape_from_openproxylist(verbose: bool = True) -> List[str]:
             print("[INFO] OpenProxyList: Initializing browser with DrissionPage...")
         
         co = ChromiumOptions()
-        # always use the new headless mode for consistency
         co.set_argument("--headless", "new")
 
-        print("after co.set_argument('--headless', 'new')")
-        # conditionally apply --no-sandbox only for root user on linux
-        print("sys.platform is " + sys.platform)
+        # the github actions runner needs this, even if not running as root
         if sys.platform == "linux":
-            print("1")
-            import os
-            print("os.geteuid() is " + str(os.geteuid()))
-            if os.geteuid() == 0:
-                print("[INFO] Linux root user detected. Applying --no-sandbox.")
-                co.set_argument('--no-sandbox')
+            print("[WARNING] You are running the script on Linux. Applying --no-sandbox as a workaround.")
+            co.set_argument('--no-sandbox')
         
         page = ChromiumPage(co)
 
@@ -137,4 +131,4 @@ def scrape_from_openproxylist(verbose: bool = True) -> List[str]:
     if verbose:
         print(f"[INFO] OpenProxyList: Finished. Found a total of {len(all_proxies)} unique proxies.")
     
-    return list(all_proxies)
+    return sorted(list(all_proxies))
