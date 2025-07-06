@@ -36,7 +36,7 @@ def scrape_from_openproxylist(verbose: bool = True) -> List[str]:
         if sys.platform == "linux":
             print("1")
             import os
-            print("os.geteuid()" + os.geteuid())
+            print("os.geteuid() is " + str(os.geteuid()))
             if os.geteuid() == 0:
                 print("[INFO] Linux root user detected. Applying --no-sandbox.")
                 co.set_argument('--no-sandbox')
