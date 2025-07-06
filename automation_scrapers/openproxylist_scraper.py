@@ -1,131 +1,241 @@
 import time
 import requests
-import re
-from DrissionPage import ChromiumPage, ChromiumOptions 
-from typing import List
-
-from scrapers.proxy_scraper import extract_proxies_from_content
+from DrissionPage import ChromiumPage, ChromiumOptions
+from typing import List, Dict, Optional
+import random
+import string
+import json
+import sys 
 
 # --- Configuration ---
-BROWSER_VISIT_URL = "https://openproxylist.com/proxy/"
-POST_TARGET_URL = "https://openproxylist.com/get-list.html"
+LOGIN_URL = "https://dashboard.webshare.io/login"
+REGISTER_URL = "https://dashboard.webshare.io/register/?source=nav_register"
+PROXY_LIST_API_URL = "https://proxy.webshare.io/api/v2/proxy/list/?mode=direct&page=1&page_size=10"
+CREDENTIALS_FILE = "credentials.json"
 
-def scrape_from_openproxylist(verbose: bool = True) -> List[str]:
-    """
-    Scrapes proxies from OpenProxyList using DrissionPage in headless mode.
-    """
-    if verbose:
-        print("[RUNNING] 'OpenProxyList' automation scraper has started (using DrissionPage).")
+# --- EXPANDED: Much larger and more diverse wordlist ---
+USERNAME_WORDS = [
+    # Tech/Sci-Fi
+    "shadow", "viper", "glitch", "nexus", "pulse", "void", "nova", "cobra",
+    "raven", "bolt", "phantom", "wraith", "serpent", "hawk", "blade", "storm",
+    "titan", "golem", "echo", "cipher", "vector", "quark", "hydro", "pyro",
+    "aero", "terra", "luna", "solar", "cyborg", "laser", "plasma", "droid",
+    "matrix", "nebula", "comet", "orbit", "ryzen", "intel", "core", "volta",
     
-    all_proxies = set()
-    page = None
+    # Fantasy/Mythical
+    "dragon", "griffin", "sphinx", "wizard", "mage", "sorcerer", "warlock",
+    "elf", "orc", "goblin", "troll", "nymph", "siren", "phoenix", "hydra",
+    "kraken", "cyclops", "minotaur", "centaur", "pixie", "sprite", "banshee",
     
+    # Nature/Animals
+    "wolf", "tiger", "panther", "jaguar", "cougar", "lynx", "falcon", "eagle",
+    "hornet", "wasp", "spider", "scorpion", "shark", "whale", "orca",
+    "forest", "mountain", "river", "ocean", "desert", "jungle", "canyon",
+    "meadow", "stream", "pebble", "boulder", "root", "branch",
+    
+    # Abstract/Concepts
+    "king", "queen", "ace", "jack", "joker", "spade", "omega", "alpha", "beta",
+    "delta", "gamma", "sigma", "theta", "zeta", "axiom", "enigma", "paradox",
+    "vertex", "zenith", "nadir", "karma", "chaos", "order", "logic", "fate",
+    
+    # Objects/Misc
+    "anchor", "compass", "hammer", "anvil", "shield", "sword", "arrow", "bow",
+    "needle", "thread", "key", "lock", "chain", "gear", "engine", "piston"
+]
+
+def _generate_random_email():
+    """Generates a plausible, word-based random email address."""
+    word1 = random.choice(USERNAME_WORDS)
+    word2 = random.choice(USERNAME_WORDS)
+    while word1 == word2:
+        word2 = random.choice(USERNAME_WORDS)
+    return f"{word1}{word2}@gmail.com"
+
+def _generate_random_password():
+    """Generates a random password."""
+    return f"TestPass_{''.join(random.choices(string.ascii_lowercase + string.digits, k=10))}!"
+
+def _load_credentials() -> Dict:
+    """Loads credentials from the JSON file."""
+    if not os.path.exists(CREDENTIALS_FILE):
+        return {}
     try:
-        # --- Step 1: Initialize the browser with DrissionPage ---
-        if verbose:
-            print("[INFO] OpenProxyList: Initializing browser with DrissionPage in headless mode...")
-        
+        with open(CREDENTIALS_FILE, 'r') as f:
+            return json.load(f)
+    except (IOError, json.JSONDecodeError):
+        return {}
 
-        co = ChromiumOptions()
-        co.headless(False)
-        # co.headless(True)
-        # co.set_argument("--headless", "new")
-        co.set_argument("--no-sandbox")
-        
-        page = ChromiumPage(co)
+def _save_credentials(creds: Dict):
+    """Saves the credentials dictionary to the JSON file."""
+    try:
+        with open(CREDENTIALS_FILE, 'w') as f:
+            json.dump(creds, f, indent=4)
+    except IOError as e:
+        print(f"[ERROR] Could not save credentials to '{CREDENTIALS_FILE}': {e}")
 
-        if verbose:
-            print(f"[INFO] OpenProxyList: Navigating to {BROWSER_VISIT_URL} to prepare for token generation...")
-        page.get(BROWSER_VISIT_URL)
-
-        # --- Step 2: Dynamically find the reCAPTCHA site key ---
-        if verbose:
-            print("[INFO] OpenProxyList: Searching for dynamic reCAPTCHA site key...")
-        
-        html_content = page.html
-        site_key_regex = re.compile(r'recaptcha/api\.js\?render=([\w-]+)')
-        match = site_key_regex.search(html_content)
-        
-        if not match:
-            raise ValueError("Could not dynamically find the reCAPTCHA site key on the page.")
-            
-        recaptcha_site_key = match.group(1)
-        if verbose:
-            print(f"[INFO] OpenProxyList: Dynamically found site key: {recaptcha_site_key}")
-
-        time.sleep(5) 
-        
-        if verbose:
-            print("[INFO] OpenProxyList: reCAPTCHA library should be loaded. Starting page scraping.")
-        
-        # --- Step 3: Loop through pages, generating a new token each time ---
-        page_num = 1
+def _try_direct_api_call(creds: Dict, verbose: bool) -> Optional[List[str]]:
+    """Attempts to fetch proxies directly using saved cookies."""
+    if verbose: print("[INFO] Webshare: Found saved session. Attempting direct API call...")
+    try:
         session = requests.Session()
-
-        while True:
-            if verbose:
-                print(f"[INFO] OpenProxyList: Generating new token for page {page_num}...")
+        session.headers.update({
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.93 Safari/537.36',
+            'Authorization': f"Token {creds['cookies']['newDesignLoginToken']}",
+            'origin': 'https://dashboard.webshare.io',
+            'referer': 'https://dashboard.webshare.io/',
+        })
+        for name, value in creds['cookies'].items():
+            session.cookies.set(name, value)
             
-            js_command = f"return grecaptcha.execute('{recaptcha_site_key}', {{action: 'proxy'}})"
-            token = page.run_js(js_command)
+        response = session.get(PROXY_LIST_API_URL, timeout=15)
+        response.raise_for_status()
+        proxy_data = response.json()
+        
+        found_proxies = proxy_data.get('results', [])
+        if not found_proxies:
+            if verbose: print("[WARN] Webshare: Direct API call successful but no proxies returned.")
+            return []
+        
+        all_proxies = set()
+        for proxy_info in found_proxies:
+            username = proxy_info.get('username')
+            password = proxy_info.get('password')
+            ip = proxy_info.get('proxy_address')
+            port = proxy_info.get('port')
+            if all([username, password, ip, port]):
+                all_proxies.add(f"{username}:{password}@{ip}:{port}")
+        
+        if verbose: print("[SUCCESS] Webshare: Direct API call successful. Browser not needed.")
+        return sorted(list(all_proxies))
+        
+    except (requests.exceptions.RequestException, KeyError) as e:
+        if verbose: print(f"[INFO] Webshare: Direct API call failed (session likely expired). Falling back to browser login. Error: {e}")
+        return None
 
-            if not token:
-                if verbose:
-                    print(f"[WARN]   ... Failed to generate reCAPTCHA token for page {page_num}. Stopping.")
-                break
+def _login(page: ChromiumPage, creds: Dict, verbose: bool) -> bool:
+    """Attempts to log in with existing credentials using DrissionPage."""
+    if verbose: print(f"[INFO] Webshare: Attempting to log in as {creds['email']}...")
+    try:
+        page.get(LOGIN_URL)
+        
+        if verbose: print("[INFO] Webshare: Waiting for login form container to render...")
+        form = page.ele('tag:form', timeout=20)
+        if verbose: print("[INFO] Webshare: Form container is ready.")
 
-            post_data = {
-                'g-recaptcha-response': token,
-                'response': '',
-                'sort': 'sortlast',
-                'page': str(page_num)
-            }
+        email_input = form.ele('input@data-testid=email-input')
+        password_input = form.ele('input@data-testid=password-input')
+        login_button = form.ele('button@data-testid=signin-button')
+        
+        if verbose: print("[INFO] Webshare: Entering credentials...")
+        email_input.input(creds['email'])
+        time.sleep(0.5)
+        password_input.input(creds['password'])
+        time.sleep(0.5)
+        login_button.click()
+
+        page.wait.url_contains('/proxy/list', timeout=10)
+        if verbose: print("[SUCCESS] Webshare: Login successful.")
+        return True
             
-            if verbose:
-                print(f"[INFO]   ... POSTing to {POST_TARGET_URL} for page {page_num}...")
-            
-            try:
-                response = session.post(POST_TARGET_URL, data=post_data, timeout=20)
-                response.raise_for_status()
-
-                newly_found = extract_proxies_from_content(response.text, verbose=False)
-                
-                if not newly_found:
-                    if verbose:
-                        print(f"[INFO]   ... No proxies found on page {page_num}. Assuming end of list.")
-                    break
-
-                initial_count = len(all_proxies)
-                all_proxies.update(newly_found)
-                
-                if verbose:
-                    print(f"[INFO]   ... Found {len(newly_found)} proxies on this page. Total unique: {len(all_proxies)}.")
-
-                if len(all_proxies) == initial_count and page_num > 1:
-                    if verbose:
-                        print("[INFO]   ... No new unique proxies found. Stopping.")
-                    break
-
-                page_num += 1
-                time.sleep(1) # a small delay between post requests
-
-            except requests.RequestException as e:
-                if verbose:
-                    print(f"[ERROR]  ... Request for page {page_num} failed: {e}. Stopping.")
-                break
-    
     except Exception as e:
-        if verbose:
-            print(f"[ERROR] DrissionPage scraper failed with an exception: {e}")
+        if verbose: print(f"[WARN] Webshare: An error occurred during login attempt: {e}. Will try to register.")
+        return False
+
+def _register(page: ChromiumPage, verbose: bool) -> Dict:
+    """Performs the registration process using DrissionPage."""
+    if verbose: print("[INFO] Webshare: Starting new registration process.")
+    page.get(REGISTER_URL)
+
+    if verbose: print("[INFO] Webshare: Waiting for registration form container to render...")
+    form = page.ele('tag:form', timeout=20)
+    if verbose: print("[INFO] Webshare: Form container is ready.")
+
+    email_input = form.ele('input@data-testid=email-input')
+    password_input = form.ele('input@data-testid=password-input')
+    signup_button = form.ele('button@data-testid=signup-button')
+    email = _generate_random_email()
+    password = _generate_random_password()
+    
+    if verbose: print(f"[INFO] Webshare: Simulating typing for new account: {email}")
+    email_input.input(email)
+    time.sleep(0.5)
+    password_input.input(password)
+    time.sleep(1)
+    signup_button.click()
+
+    print("\n" + "="*70 + "\nACTION REQUIRED: Please solve the CAPTCHA in the browser.\n" + "="*70 + "\n")
+
+    start_button = page.ele('div.MuiDialog-root button', timeout=120)
+    if verbose: print("[INFO] Webshare: 'Let's Get Started' button found. Clicking...")
+    time.sleep(1)
+    start_button.click()
+    
+    page.wait.url_contains('/proxy/list', timeout=20)
+    if verbose: print("[SUCCESS] Webshare: Registration and onboarding complete.")
+    return {'email': email, 'password': password}
+
+def scrape_from_webshare(verbose: bool = True) -> List[str]:
+    """
+    Tries to use a saved session first. If that fails, logs in or registers
+    a new account using DrissionPage.
+    """
+    if verbose: print("[RUNNING] 'Webshare.io' automation scraper has started.")
+    all_credentials = _load_credentials()
+    webshare_data = all_credentials.get('webshare')
+
+    if webshare_data and 'cookies' in webshare_data:
+        proxies = _try_direct_api_call(webshare_data, verbose)
+        if proxies is not None:
+            return proxies
+    
+    page = None
+    try:
+        if verbose: print("[INFO] Webshare: Initializing browser with DrissionPage to get a new session...")
+        
+        co = ChromiumOptions()
+        co.set_argument("--headless", "new")
+
+        # conditionally apply --no-sandbox only for root user on linux
+        if sys.platform == "linux":
+            # this function only exists on unix-like systems, so we check the platform first
+            import os
+            if os.geteuid() == 0:
+                print("[WARNING] You are running the script as a root. Applying --no-sandbox as a workaround.")
+                co.set_argument('--no-sandbox')
+
+        # run with our configured options
+        page = ChromiumPage(co)
+        
+        logged_in = False
+        if webshare_data and 'email' in webshare_data:
+            logged_in = _login(page, webshare_data, verbose)
+
+        new_session_data = {}
+        if not logged_in:
+            new_session_data = _register(page, verbose)
+        else:
+            new_session_data = webshare_data
+
+        if verbose: print("[INFO] Webshare: Extracting fresh authentication cookies...")
+        time.sleep(2)
+        cookies = page.get_cookies(as_dict=False) # get list of dicts
+        auth_cookies = {cookie['name']: cookie['value'] for cookie in cookies}
+        
+        if 'newDesignLoginToken' not in auth_cookies:
+            raise ValueError("Login succeeded, but could not find the necessary API token in cookies.")
+            
+        new_session_data['cookies'] = auth_cookies
+        all_credentials['webshare'] = new_session_data
+        _save_credentials(all_credentials)
+        if verbose: print(f"[INFO] Webshare: Session for {new_session_data['email']} saved to {CREDENTIALS_FILE}.")
+        
+        return _try_direct_api_call(new_session_data, verbose) or []
+
+    except Exception as e:
+        print(f"[ERROR] Webshare scraper failed: {e}")
+        return []
 
     finally:
-        # --- Step 4: Close the browser ---
         if page:
-            if verbose:
-                print("[INFO] OpenProxyList: Shutting down the browser.")
+            if verbose: print("[INFO] Webshare: Shutting down the browser.")
             page.quit()
-
-    if verbose:
-        print(f"[INFO] OpenProxyList: Finished. Found a total of {len(all_proxies)} unique proxies.")
-    
-    return list(all_proxies)
