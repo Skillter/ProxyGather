@@ -1,10 +1,6 @@
 import time
 import requests
-import re
-import undetected_chromedriver as uc
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.common.by import By
+from DrissionPage import ChromiumPage, ChromiumOptions
 from typing import List, Dict, Optional
 import random
 import string
@@ -17,7 +13,6 @@ REGISTER_URL = "https://dashboard.webshare.io/register/?source=nav_register"
 PROXY_LIST_API_URL = "https://proxy.webshare.io/api/v2/proxy/list/?mode=direct&page=1&page_size=10"
 CREDENTIALS_FILE = "credentials.json"
 
-# --- EXPANDED: Much larger and more diverse wordlist ---
 USERNAME_WORDS = [
     # Tech/Sci-Fi
     "shadow", "viper", "glitch", "nexus", "pulse", "void", "nova", "cobra",
@@ -116,23 +111,35 @@ def _try_direct_api_call(creds: Dict, verbose: bool) -> Optional[List[str]]:
         if verbose: print(f"[INFO] Webshare: Direct API call failed (session likely expired). Falling back to browser login. Error: {e}")
         return None
 
-def _login(driver, wait, creds: Dict, verbose: bool) -> bool:
-    """Attempts to log in with existing credentials."""
+def _login(page: ChromiumPage, creds: Dict, verbose: bool) -> bool:
+    """Attempts to log in with existing credentials using DrissionPage."""
     if verbose: print(f"[INFO] Webshare: Attempting to log in as {creds['email']}...")
     try:
-        driver.get(LOGIN_URL)
-        email_input = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, 'input[data-testid="email-input"]')))
-        password_input = driver.find_element(By.CSS_SELECTOR, 'input[data-testid="password-input"]')
-        login_button = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, 'button[data-testid="signin-button"]')))
+        page.get(LOGIN_URL)
         
-        if verbose: print("[INFO] Webshare: Login form ready. Entering credentials...")
-        email_input.send_keys(creds['email'])
+        if verbose: print("[INFO] Webshare: Waiting for page to be interactive...")
+        page.wait.doc_loaded(timeout=20)
+        time.sleep(2) # extra wait for js to render
+
+        if verbose: print("[INFO] Webshare: Finding elements via direct JavaScript execution...")
+        email_input = page.run_js('return document.querySelector("#email-input")')
+        password_input = page.run_js('return document.querySelector("input[data-testid=password-input]")')
+        login_button = page.run_js('return document.querySelector("button[data-testid=signin-button]")')
+        
+        if not all([email_input, password_input, login_button]):
+            raise Exception("Could not find all required form elements via JavaScript.")
+
+        if verbose: print("[INFO] Webshare: Entering credentials...")
+        email_input.input(creds['email'])
         time.sleep(0.5)
-        password_input.send_keys(creds['password'])
+        password_input.input(creds['password'])
         time.sleep(0.5)
         login_button.click()
 
-        WebDriverWait(driver, 10).until(EC.url_contains('/proxy/list'))
+        page.wait.url_change('/proxy/list', timeout=10)
+        if '/proxy/list' not in page.url:
+            raise Exception("Login failed, page did not redirect to proxy list.")
+
         if verbose: print("[SUCCESS] Webshare: Login successful.")
         return True
             
@@ -140,38 +147,51 @@ def _login(driver, wait, creds: Dict, verbose: bool) -> bool:
         if verbose: print(f"[WARN] Webshare: An error occurred during login attempt: {e}. Will try to register.")
         return False
 
-def _register(driver, wait, verbose: bool) -> Dict:
-    """Performs the registration process."""
+def _register(page: ChromiumPage, verbose: bool) -> Dict:
+    """Performs the registration process using DrissionPage."""
     if verbose: print("[INFO] Webshare: Starting new registration process.")
-    driver.get(REGISTER_URL)
-    email_input = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, 'input[data-testid="email-input"]')))
-    password_input = driver.find_element(By.CSS_SELECTOR, 'input[data-testid="password-input"]')
-    signup_button = driver.find_element(By.CSS_SELECTOR, 'button[data-testid="signup-button"]')
+    page.get(REGISTER_URL)
+
+    if verbose: print("[INFO] Webshare: Waiting for page to be interactive...")
+    page.wait.doc_loaded(timeout=20)
+    time.sleep(2) # extra wait for js to render
+
+    if verbose: print("[INFO] Webshare: Finding elements via direct JavaScript execution...")
+    email_input = page.run_js('return document.querySelector("#email-input")')
+    password_input = page.run_js('return document.querySelector("input[data-testid=password-input]")')
+    signup_button = page.run_js('return document.querySelector("button[data-testid=signup-button]")')
+
+    if not all([email_input, password_input, signup_button]):
+        raise Exception("Could not find all required form elements via JavaScript.")
+
     email = _generate_random_email()
     password = _generate_random_password()
     
     if verbose: print(f"[INFO] Webshare: Simulating typing for new account: {email}")
-    email_input.send_keys(email)
+    email_input.input(email)
     time.sleep(0.5)
-    password_input.send_keys(password)
+    password_input.input(password)
     time.sleep(1)
     signup_button.click()
 
     print("\n" + "="*70 + "\nACTION REQUIRED: Please solve the CAPTCHA in the browser.\n" + "="*70 + "\n")
 
-    start_button = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, "div.MuiDialog-root button.MuiButton-root")))
+    start_button = page.ele("text:Let's Get Started", timeout=120)
     if verbose: print("[INFO] Webshare: 'Let's Get Started' button found. Clicking...")
     time.sleep(1)
     start_button.click()
     
-    wait.until(EC.url_contains('/proxy/list'))
+    page.wait.url_change('/proxy/list', timeout=20)
+    if '/proxy/list' not in page.url:
+        raise Exception("Registration failed, page did not redirect to proxy list.")
+
     if verbose: print("[SUCCESS] Webshare: Registration and onboarding complete.")
     return {'email': email, 'password': password}
 
 def scrape_from_webshare(verbose: bool = True) -> List[str]:
     """
-    Tries to use a saved session first. If that fails, logs in with saved
-    credentials. If that fails, registers a new account.
+    Tries to use a saved session first. If that fails, logs in or registers
+    a new account using DrissionPage.
     """
     if verbose: print("[RUNNING] 'Webshare.io' automation scraper has started.")
     all_credentials = _load_credentials()
@@ -182,27 +202,26 @@ def scrape_from_webshare(verbose: bool = True) -> List[str]:
         if proxies is not None:
             return proxies
     
-    driver = None
+    page = None
     try:
-        if verbose: print("[INFO] Webshare: Initializing automated browser to get a new session...")
-        options = uc.ChromeOptions()
-        options.add_argument("--window-size=1920,1080")
-        driver = uc.Chrome(options=options, use_subprocess=True)
-        wait = WebDriverWait(driver, 120)
+        if verbose: print("[INFO] Webshare: Initializing browser with DrissionPage to get a new session...")
+        
+        # run visibly since it may require user interaction for captcha
+        page = ChromiumPage()
         
         logged_in = False
         if webshare_data and 'email' in webshare_data:
-            logged_in = _login(driver, wait, webshare_data, verbose)
+            logged_in = _login(page, webshare_data, verbose)
 
         new_session_data = {}
         if not logged_in:
-            new_session_data = _register(driver, wait, verbose)
+            new_session_data = _register(page, verbose)
         else:
             new_session_data = webshare_data
 
         if verbose: print("[INFO] Webshare: Extracting fresh authentication cookies...")
         time.sleep(2)
-        cookies = driver.get_cookies()
+        cookies = page.cookies()
         auth_cookies = {cookie['name']: cookie['value'] for cookie in cookies}
         
         if 'newDesignLoginToken' not in auth_cookies:
@@ -220,6 +239,6 @@ def scrape_from_webshare(verbose: bool = True) -> List[str]:
         return []
 
     finally:
-        if driver:
+        if page:
             if verbose: print("[INFO] Webshare: Shutting down the browser.")
-            driver.quit()
+            page.quit()
