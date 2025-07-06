@@ -30,11 +30,15 @@ def scrape_from_openproxylist(verbose: bool = True) -> List[str]:
         # always use the new headless mode for consistency
         co.set_argument("--headless", "new")
 
+        print("after co.set_argument('--headless', 'new')")
         # conditionally apply --no-sandbox only for root user on linux
+        print("sys.platform is " + sys.platform)
         if sys.platform == "linux":
+            print("1")
             import os
+            print("os.geteuid()" + os.geteuid())
             if os.geteuid() == 0:
-                if verbose: print("[INFO] Linux root user detected. Applying --no-sandbox.")
+                print("[INFO] Linux root user detected. Applying --no-sandbox.")
                 co.set_argument('--no-sandbox')
         
         page = ChromiumPage(co)
