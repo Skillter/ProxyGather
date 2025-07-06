@@ -20,3 +20,4 @@ getproxy/proxy-lists/
 !**/sites-to-get-proxies-from.txt
 !/proxies/*.txt
 
+Duplicate
