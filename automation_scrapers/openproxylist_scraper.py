@@ -29,7 +29,7 @@ def scrape_from_openproxylist(verbose: bool = True) -> List[str]:
         co = ChromiumOptions()
         # co.headless(True)
         co.set_argument("--headless", "new")
-        co.set_argument("--no-sandbox")
+        # co.set_argument("--no-sandbox")
         
         page = ChromiumPage(co)
 
