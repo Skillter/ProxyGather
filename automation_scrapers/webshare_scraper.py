@@ -206,8 +206,18 @@ def scrape_from_webshare(verbose: bool = True) -> List[str]:
     try:
         if verbose: print("[INFO] Webshare: Initializing browser with DrissionPage to get a new session...")
         
+        co = ChromiumOptions()
+        co.set_argument("--headless", False)
+
+        # the github actions runner needs this, even if not running as root
+        if sys.platform == "linux":
+            print("[WARNING] You are running the script on Linux. Applying --no-sandbox as a workaround.")
+            co.set_argument('--no-sandbox')
+        
+
+
         # run visibly since it may require user interaction for captcha
-        page = ChromiumPage()
+        page = ChromiumPage(co)
         
         logged_in = False
         if webshare_data and 'email' in webshare_data:
