@@ -28,12 +28,12 @@ async def sophisticated_cloudflare_bypass():
         user_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36'
 
         browser_args = [
-            f'--user-agent={user_agent}',
-            '--window-size=1920,1080',
-            '--no-sandbox',
-            '--disable-dev-shm-usage',
-            '--disable-gpu',
-            '--log-level=0'
+            # f'--user-agent={user_agent}',
+            # '--window-size=1920,1080',
+            # '--no-sandbox',
+            # '--disable-dev-shm-usage',
+            # '--disable-gpu',
+            # '--log-level=0'
         ]
 
         # --- 2. Browser Initialization ---
@@ -51,39 +51,13 @@ async def sophisticated_cloudflare_bypass():
         max_retries = 5
         for attempt in range(max_retries):
             logger.info(f"--- Bypass Attempt {attempt + 1} of {max_retries} ---")
-            await asyncio.sleep(4)  # Wait for the page to potentially load/present a challenge
+            await asyncio.sleep(6)  # Wait for the page to potentially load/present a challenge
 
             page_content = await page.get_content()
             logger.debug(f"Page content length for attempt {attempt + 1}: {len(page_content)}")
 
             await page.verify_cf("cf.png", True)
-            await asyncio.sleep(5)
-
-            # --- 4. Challenge Detection ---
-            if "Just a moment..." in page_content or "Verify you are human" in page_content:
-                logger.info("Cloudflare challenge page detected.")
-
-                # Try to find the Turnstile iframe. This is a common element in modern CF challenges.
-                iframe = await page.select('iframe[src*="challenges.cloudflare.com"]')
-
-                if iframe:
-                    logger.info("Found Cloudflare Turnstile iframe. Waiting for automatic resolution...")
-                    await asyncio.sleep(10) # Give it a generous amount of time to solve
-                else:
-                    logger.warning("No Turnstile iframe found. Checking for legacy checkbox...")
-                    checkbox = await page.select('input[type=checkbox]')
-                    if checkbox:
-                        logger.info("Found legacy checkbox challenge. Attempting to click.")
-                        try:
-                            await checkbox.click()
-                            logger.info("Checkbox clicked. Waiting for redirection...")
-                            await asyncio.sleep(8)
-                        except Exception as e:
-                            logger.error(f"Failed to click checkbox on attempt {attempt + 1}: {e}")
-                            await page.save_screenshot(f"failure_screenshot_attempt_{attempt + 1}.png")
-                    else:
-                        logger.warning("No known challenge element found. Waiting to see if page resolves on its own.")
-                        await asyncio.sleep(5)
+            # await asyncio.sleep(5)
 
             # --- 5. Verification ---
             logger.info("Verifying bypass status...")
