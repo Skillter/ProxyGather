@@ -1,192 +1,127 @@
 import asyncio
-import time
 import nodriver as uc
+import logging
+import os
 
-async def main():
-    print("[DEBUG] Starting browser...")
-    browser = await uc.start(
-        headless=False,  # Visible for debugging
-        browser_args=['--window-size=1200,800'],
-    )
-    print("[DEBUG] Browser started")
+# Configure logging to provide clear, structured output.
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+# For deeper debugging of nodriver itself, you can uncomment the following line
+# logging.getLogger("nodriver").setLevel(logging.DEBUG)
+
+async def sophisticated_cloudflare_bypass():
+    """
+    A sophisticated and failure-resistant Cloudflare bypass script using nodriver.
+    This script includes detailed logging, retry mechanisms, and error handling.
+    """
+    browser = None
+    target_url = "https://hide.mn/en/proxy-list/?start=192"
+    page_content_after_bypass = ""
+
+    logger.info("--- Starting Cloudflare Bypass Script ---")
 
     try:
-        # Create a new tab
-        print("[DEBUG] Creating new tab...")
-        tab = await browser.get("about:blank")
-        print("[DEBUG] Tab created")
-        
-        # Replace with your target URL
-        url = "https://hide.mn/en/proxy-list/?start=192"
-        print(f"[DEBUG] Navigating to URL: {url}")
-        await tab.get(url)
-        print("[DEBUG] URL loaded. Waiting for page to stabilize...")
-        
-        # Wait for page to load
-        await asyncio.sleep(5)
-        print("[DEBUG] Waited 5 seconds for initial load")
+        # --- 1. Browser Configuration ---
+        logger.info("Configuring browser...")
+        # Using a specific, realistic user-agent is crucial.
+        user_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36'
 
-        # Check current page content
-        print("[DEBUG] Checking page source...")
-        page_source = await tab.get_content()
-        print(f"[DEBUG] Page source length: {len(page_source)}")
-        
-        # Check if we're on a challenge page
-        if "Just a moment..." in page_source:
-            print("[DEBUG] Cloudflare challenge detected!")
-            
-            # Wait for Turnstile to load
-            print("[DEBUG] Waiting for Turnstile to initialize...")
-            await asyncio.sleep(3)
-            
-            # Try to find the Turnstile iframe
-            print("[DEBUG] Looking for Turnstile iframe...")
-            try:
-                # First, let's check all iframes on the page
-                iframes = await tab.find_all('iframe')
-                print(f"[DEBUG] Found {len(iframes)} iframe(s) on page")
-                
-                turnstile_iframe = None
-                for i, iframe in enumerate(iframes):
-                    try:
-                        src = iframe.attrs.get('src', '')
-                        print(f"[DEBUG] Iframe {i}: src = {src[:100] if src else 'No src'}")
-                        if 'challenges.cloudflare.com/turnstile' in src:
-                            turnstile_iframe = iframe
-                            print(f"[DEBUG] Found Turnstile iframe at index {i}")
-                            break
-                    except Exception as e:
-                        print(f"[DEBUG] Error checking iframe {i}: {e}")
-                
-                if turnstile_iframe:
-                    print("[DEBUG] Attempting to interact with Turnstile...")
-                    
-                    # Try clicking directly on the iframe area
-                    try:
-                        print("[DEBUG] Getting iframe position...")
-                        # Get iframe bounds
-                        iframe_rect = await turnstile_iframe.get_position()
-                        print(f"[DEBUG] Iframe position: {iframe_rect}")
-                        
-                        # Click in the center of the iframe
-                        click_x = iframe_rect['x'] + iframe_rect['width'] / 2
-                        click_y = iframe_rect['y'] + iframe_rect['height'] / 2
-                        print(f"[DEBUG] Clicking at coordinates: ({click_x}, {click_y})")
-                        
-                        await tab.mouse.click(click_x, click_y)
-                        print("[DEBUG] Clicked on iframe area")
-                        
-                    except Exception as e:
-                        print(f"[ERROR] Failed to click iframe: {e}")
-                        
-                        # Alternative approach: try to find clickable element
-                        print("[DEBUG] Trying alternative approach...")
-                        clickable = await tab.find('div#NMOK7')
-                        if clickable:
-                            print("[DEBUG] Found challenge container, clicking...")
-                            await clickable.click()
-                        
+        browser_args = [
+            f'--user-agent={user_agent}',
+            '--window-size=1920,1080',
+            '--no-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-gpu',
+            '--log-level=0'
+        ]
+
+        # --- 2. Browser Initialization ---
+        logger.info("Launching browser...")
+        browser = await uc.start(
+            browser_args=browser_args,
+            headless=False
+        )
+        logger.info("Browser launched successfully.")
+
+        page = await browser.get(target_url)
+        logger.info(f"Initial navigation to {target_url} requested.")
+
+        # --- 3. Main Bypass Loop with Retry ---
+        max_retries = 5
+        for attempt in range(max_retries):
+            logger.info(f"--- Bypass Attempt {attempt + 1} of {max_retries} ---")
+            await asyncio.sleep(4)  # Wait for the page to potentially load/present a challenge
+
+            page_content = await page.get_content()
+            logger.debug(f"Page content length for attempt {attempt + 1}: {len(page_content)}")
+
+            await page.verify_cf("cf.png", True)
+            await asyncio.sleep(5)
+
+            # --- 4. Challenge Detection ---
+            if "Just a moment..." in page_content or "Verify you are human" in page_content:
+                logger.info("Cloudflare challenge page detected.")
+
+                # Try to find the Turnstile iframe. This is a common element in modern CF challenges.
+                iframe = await page.select('iframe[src*="challenges.cloudflare.com"]')
+
+                if iframe:
+                    logger.info("Found Cloudflare Turnstile iframe. Waiting for automatic resolution...")
+                    await asyncio.sleep(10) # Give it a generous amount of time to solve
                 else:
-                    print("[WARNING] No Turnstile iframe found")
-                    
-                    # Check if there's a clickable challenge element
-                    print("[DEBUG] Looking for alternative challenge elements...")
-                    challenge_container = await tab.find('div#NMOK7')
-                    if challenge_container:
-                        print("[DEBUG] Found challenge container div")
-                        await challenge_container.click()
-                        print("[DEBUG] Clicked challenge container")
-                
-                # Wait for verification
-                print("[DEBUG] Waiting for verification to complete...")
-                start_time = time.time()
-                verified = False
-                
-                while time.time() - start_time < 60:
-                    await asyncio.sleep(2)
-                    
-                    # Check if we're still on challenge page
-                    current_url = tab.url
-                    print(f"[DEBUG] Current URL: {current_url}")
-                    
-                    # Check page content
-                    page_content = await tab.get_content()
-                    
-                    # Check for success indicators
-                    if "Verification successful" in page_content:
-                        print("[DEBUG] Found 'Verification successful' text!")
-                        verified = True
-                        break
-                    
-                    # Check if we've been redirected away from challenge
-                    if "Just a moment..." not in page_content:
-                        print("[DEBUG] Challenge page no longer detected")
-                        verified = True
-                        break
-                    
-                    # Check for hidden token
-                    try:
-                        token_input = await tab.find('input[name="cf-turnstile-response"]')
-                        if token_input:
-                            token_value = await token_input.get_attribute('value')
-                            if token_value:
-                                print(f"[DEBUG] Token found: {token_value[:30]}...")
-                                verified = True
-                                break
-                    except:
-                        pass
-                    
-                    print(f"[DEBUG] Still waiting... ({int(time.time() - start_time)}s elapsed)")
-                
-                if verified:
-                    print("[SUCCESS] Verification completed!")
-                    await asyncio.sleep(5)  # Wait for redirect
-                    
-                    # Check final page
-                    final_content = await tab.get_content()
-                    print(f"[DEBUG] Final page length: {len(final_content)}")
-                    
-                    # Try to extract proxy data if available
-                    if "proxy" in final_content.lower():
-                        print("[DEBUG] Proxy content detected on page")
-                        # Save screenshot
-                        await tab.save_screenshot("success.png")
-                        print("[DEBUG] Screenshot saved as success.png")
-                else:
-                    print("[ERROR] Verification timeout!")
-                    await tab.save_screenshot("timeout.png")
-                    
-            except Exception as e:
-                print(f"[ERROR] Exception during challenge handling: {e}")
-                import traceback
-                traceback.print_exc()
-                await tab.save_screenshot("error.png")
-                
-        else:
-            print("[DEBUG] No Cloudflare challenge detected")
-            print("[DEBUG] Page loaded successfully")
-            
-            # Check if we have proxy content
-            if "proxy" in page_source.lower():
-                print("[DEBUG] Proxy list content found!")
+                    logger.warning("No Turnstile iframe found. Checking for legacy checkbox...")
+                    checkbox = await page.select('input[type=checkbox]')
+                    if checkbox:
+                        logger.info("Found legacy checkbox challenge. Attempting to click.")
+                        try:
+                            await checkbox.click()
+                            logger.info("Checkbox clicked. Waiting for redirection...")
+                            await asyncio.sleep(8)
+                        except Exception as e:
+                            logger.error(f"Failed to click checkbox on attempt {attempt + 1}: {e}")
+                            await page.save_screenshot(f"failure_screenshot_attempt_{attempt + 1}.png")
+                    else:
+                        logger.warning("No known challenge element found. Waiting to see if page resolves on its own.")
+                        await asyncio.sleep(5)
+
+            # --- 5. Verification ---
+            logger.info("Verifying bypass status...")
+            page_content_after_bypass = await page.get_content()
+            if "Just a moment..." not in page_content_after_bypass and "Verify you are human" not in page_content_after_bypass:
+                logger.info("SUCCESS: Cloudflare bypass appears successful!")
+                logger.info(f"Final Page Title: {await page.evaluate('document.title')}")
+                logger.info("--- Script Finished Successfully ---")
+                # The final content is now in page_content_after_bypass if you need to use it.
+                return
             else:
-                print("[WARNING] Expected content not found")
-                
-        # Keep browser open for inspection
-        print("\n[DEBUG] Browser will remain open. Press Ctrl+C to exit...")
-        await asyncio.sleep(300)  # Keep alive for 5 minutes
-        
-    except KeyboardInterrupt:
-        print("\n[DEBUG] Keyboard interrupt received")
+                logger.warning(f"Still on challenge page after attempt {attempt + 1}.")
+                if attempt < max_retries - 1:
+                    logger.info("Reloading page and retrying...")
+                    await page.reload()
+                else:
+                    logger.error("All bypass attempts failed.")
+                    await page.save_screenshot("cloudflare_bypass_failed_final.png")
+                    logger.info("Final failure screenshot saved.")
+
     except Exception as e:
-        print(f"[ERROR] Unexpected error: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.critical(f"--- An Unhandled Error Occurred ---", exc_info=True)
+        if browser:
+            try:
+                if 'page' in locals() and page:
+                    await page.save_screenshot("error_screenshot.png")
+                    logger.info("Saved error screenshot to 'error_screenshot.png'")
+            except Exception as se:
+                logger.error(f"Could not save screenshot during error handling: {se}")
     finally:
-        print("[DEBUG] Closing browser...")
-        await browser.stop()
-        print("[DEBUG] Browser closed")
+        # --- 6. Cleanup ---
+        if browser:
+            logger.info("--- Cleaning up and closing browser ---")
+            await browser.close()
+            logger.info("Browser closed.")
 
 if __name__ == "__main__":
-    # Run the async main function
-    asyncio.run(main())
+    try:
+        asyncio.run(sophisticated_cloudflare_bypass())
+    except KeyboardInterrupt:
+        logger.info("Script execution cancelled by user.")
