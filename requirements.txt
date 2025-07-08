@@ -5,4 +5,8 @@ asyncio
 DrissionPage # This is the new better chromedriver we'll use
 pycurl
 setuptools # Needed for >3.12 Python, since distutils in python has been removed
-opencv-python 
+opencv-python
+pyautogui
+numpy
+Pillow
+pynput
