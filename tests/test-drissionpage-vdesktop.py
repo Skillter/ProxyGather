@@ -9,11 +9,15 @@ from typing import Optional, Tuple
 # Browser automation imports
 from DrissionPage import ChromiumPage, ChromiumOptions
 
-# Image recognition imports
-import pyautogui
-import cv2
-import numpy as np
-from pynput.mouse import Button, Controller
+# --- MOVED LIBRARIES ---
+# The following libraries are moved because they require a display to be active.
+# We will import them inside the functions that need them.
+#
+# import pyautogui
+# import cv2
+# import numpy as np
+# from pynput.mouse import Button, Controller
+# -----------------------
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -61,6 +65,7 @@ class BrowserAutomation:
             logging.info(f"Starting virtual display with size {self.display_size}")
             self.display = Display(visible=False, size=self.display_size)
             self.display.start()
+            # After display.start(), the environment is ready for GUI libraries
             time.sleep(1)  # Give display time to initialize
             
         return self
@@ -107,7 +112,7 @@ class BrowserAutomation:
         logging.info(f"Browser created (headless={headless}, virtual_display={self.use_virtual_display})")
         
         return self.page
-        
+
     def find(self, template_image_path: str, confidence: float = 0.9) -> Optional[Tuple[int, int]]:
         """
         Finds a template image on the screen.
@@ -119,6 +124,10 @@ class BrowserAutomation:
         Returns:
             Center coordinates of found image or None
         """
+        import pyautogui
+        import cv2
+        import numpy as np
+
         if not os.path.exists(template_image_path):
             logging.error(f"Template image not found: {template_image_path}")
             return None
@@ -156,7 +165,7 @@ class BrowserAutomation:
         except Exception as e:
             logging.error(f"Error during image search: {e}", exc_info=True)
             return None
-            
+
     def find_and_click(self, template_image_path: str, confidence: float = 0.9) -> Optional[Tuple[int, int]]:
         """
         Finds and clicks on a template image.
@@ -168,6 +177,9 @@ class BrowserAutomation:
         Returns:
             Click coordinates or None
         """
+        from pynput.mouse import Button, Controller
+        import time
+
         location = self.find(template_image_path, confidence)
         if not location:
             return None
@@ -280,7 +292,7 @@ class BrowserAutomation:
             
         logging.error("Failed to pass Cloudflare challenge after all attempts")
         return False
-        
+
     def save_screenshot(self, filename: str = "screenshot.png"):
         """Save a screenshot of the current page."""
         try:
