@@ -21,3 +21,4 @@ getproxy/proxy-lists/
 !/proxies/*.txt
 
 Duplicate
+/venv
