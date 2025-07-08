@@ -25,7 +25,7 @@ async def sophisticated_cloudflare_bypass():
         retry = 0
         while(retry <= 5):
             retry=+1
-            await page.verify_cf("cf.png", True)
+            await page.verify_cf("tests/cf.png", True)
             print("done")
             await asyncio.sleep(10) 
         await asyncio.sleep(100) 
