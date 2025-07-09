@@ -11,7 +11,7 @@ pyautogui
 numpy
 Pillow
 pynput
-pyautogui
 pyvirtualdisplay
 pywin32
 gnome-screenshot
+seleniumbase
