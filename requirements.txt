@@ -2,7 +2,8 @@ requests
 undetected-chromedriver # Old chromedriver we're trying to switch from
 nodriver # Nodriver chromedriver has problems running as admin
 asyncio
-DrissionPage # This is the new better chromedriver we'll use
+DrissionPage
+# This is the new better chromedriver we'll use
 pycurl
 setuptools # Needed for >3.12 Python, since distutils in python has been removed
 opencv-python
@@ -10,3 +11,6 @@ pyautogui
 numpy
 Pillow
 pynput
+pyautogui
+pyvirtualdisplay
+pywin32
