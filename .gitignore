@@ -21,4 +21,6 @@ getproxy/proxy-lists/
 !/proxies/*.txt
 
 Duplicate
-/venv
+/venv/
+.codeignore
+copy-codebase-and-change-extension.ps1
