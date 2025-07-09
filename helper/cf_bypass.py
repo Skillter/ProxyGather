@@ -9,82 +9,8 @@ import time
 
 from helper.window_manager import *
 
-async def wait_until_present(tab: nodriver.Tab):
-    """
-    Waits for a Cloudflare Turnstile checkbox to be present, visible, and enabled.
-
-    Args:
-        browser: The nodriver.Browser instance.
-
-    The function will poll for the checkbox within its iframe and timeout after 15 seconds
-    if the checkbox does not become ready for interaction.
-    """
-    # Selector for the Cloudflare Turnstile iframe
-    iframe_selector = 'iframe[src*="challenges.cloudflare.com"]'
-    # Selector for the checkbox inside the iframe
-    checkbox_selector = 'input[type="checkbox"]'
-    timeout = 15
-    
-
-    try:
-        if not tab:
-            logging.error("The provided tab is invalid.")
-            return
-
-        logging.info(f"Waiting for captcha to be ready (timeout: {timeout}s)...")
-        
-        # Use asyncio.timeout for a clean 15-second overall timeout
-        async with asyncio.timeout(timeout):
-            checkbox_ready = False
-            while not checkbox_ready:
-                try:
-                    # 1. Find the iframe. Use a short timeout to allow for quick polling.
-                    iframe_element = await tab.find(iframe_selector, timeout=1)
-                    
-                    iframe_page = await tab.find(iframe_element)
-
-                    # 2. Find the checkbox within the iframe.
-                    checkbox = await iframe_page.find(checkbox_selector, timeout=1)
-                    
-                    # 3. Check if the checkbox is visible and enabled.
-                    if await checkbox.is_displayed() and await checkbox.is_enabled():
-                        logging.info("SUCCESS: Captcha checkbox is ready to be clicked.")
-                        
-                        # ---
-                        # --- NEXT CODE EXECUTES HERE (ON SUCCESS)
-                        # --- For example, you can now click the checkbox:
-                        # await checkbox.click()
-                        # logging.info("Checkbox clicked.")
-                        # ---
-                        
-                        checkbox_ready = True # Exit the while loop
-                        return # Exit the function successfully
-
-                    else:
-                        # The checkbox element exists but isn't interactable yet.
-                        logging.info("Captcha found, but not yet visible or enabled. Waiting...")
-
-                except (asyncio.TimeoutError):
-                    # This is expected and normal if the iframe/checkbox hasn't loaded.
-                    logging.info("Captcha not found yet, polling...")
-                
-                # Wait for a short duration before the next poll.
-                await asyncio.sleep(0.5)
-        
-    except asyncio.TimeoutError:
-        logging.warning(f"TIMEOUT: Captcha did not become ready within {timeout} seconds.")
-    
-    except Exception as e:
-        logging.error(f"An unexpected error occurred while waiting for the captcha: {e}")
-
-    # ---
-    # --- NEXT CODE EXECUTES HERE (IF A TIMEOUT OR ERROR OCCURRED)
-    # --- Your script will continue from here if the checkbox was not successfully found and ready.
-    # ---
-    logging.info("Continuing script execution after the wait period.")
-
 # async def wait_until_present(browser: drissionpage.ChromiumPage):
-#     raise NotImplementedError()
+
 
 async def pass_cf(pid: int = None):
     """
