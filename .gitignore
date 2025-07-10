@@ -24,3 +24,6 @@ Duplicate
 /venv/
 .codeignore
 copy-codebase-and-change-extension.ps1
+/downloaded_files
+/examples-selenium - Copy
+/examples-selenium
