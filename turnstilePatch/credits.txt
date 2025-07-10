@@ -1,0 +1,3 @@
+Credits go to TheFalloutOf76
+
+Source code: https://github.com/TheFalloutOf76/CDP-bug-MouseEvent-.screenX-.screenY-patcher
