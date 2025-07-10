@@ -1,7 +1,6 @@
 import asyncio
 from types import CoroutineType, NoneType
 from typing import Any, Optional
-import DrissionPage as drissionpage
 import nodriver 
 import logging
 import sys
