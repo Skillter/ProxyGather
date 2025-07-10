@@ -12,6 +12,6 @@ numpy
 Pillow
 pynput
 pyvirtualdisplay
-pywin32
-gnome-screenshot
+# pywin32
+# gnome-screenshot
 seleniumbase
