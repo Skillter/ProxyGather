@@ -1,4 +1,6 @@
+
 import logging
+import time
 from seleniumbase import BaseCase, SB
 
 # Setup logging
@@ -53,7 +55,10 @@ def run_cloudflare_bypass_on_demo_site(sb: BaseCase):
     logging.info("Navigating to test page...")
     sb.uc_open_with_reconnect("https://nopecha.com/demo/cloudflare", 3)
 
-    # Correctly call the standalone helper function
+    # Configure the messenger theme and post messages AFTER the page is loaded.
+    sb.set_messenger_theme(theme="flat", location="top_center")
+    sb.post_message("Page loaded. Attempting bypass...")
+
     challenge_passed = pass_cloudflare_challenge(sb)
 
     if challenge_passed:
@@ -79,13 +84,9 @@ def test_cloudflare_bypass_on_demo_site(self):
 
 # This block allows the original file to still be run directly
 if __name__ == "__main__":
-    # BaseCase.main(__name__, __file__, "--uc")
-    with SB(uc=True, headed=True, disable_csp=True) as sb:
+    with SB(uc=True, headed=False, headless=True, disable_csp=True) as sb:
         # The 'sb' object is a fully initialized BaseCase instance.
         # Now you can pass it to your reusable function.
-        sb.set_messenger_theme(theme="flat", location="top_center")
-        sb.post_message("Starting bypass from main_script.py...")
-        
         run_cloudflare_bypass_on_demo_site(sb)
-        
-        sb.post_message("Task complete!")
+    print("did the browser close now?")
+    time.sleep(10)
