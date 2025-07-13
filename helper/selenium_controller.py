@@ -35,9 +35,13 @@ def pass_cloudflare_challenge(sb: BaseCase) -> bool:
     try:
         sb.wait_for_element_not_visible(challenge_iframe, timeout=8)
         logging.info("SUCCESS: Cloudflare challenge appears to be passed.")
+        logging.info(f"Landed on page: {sb.get_title()}")
+        sb.post_message("Cloudflare Challenge Bypassed!", duration=3)
         return True
     except Exception:
         logging.error("Failed to bypass Cloudflare challenge after click.")
+        logging.info(f"Landed on page: {sb.get_title()}")
+        sb.fail("Could not bypass the Cloudflare challenge.")
         sb.save_screenshot("challenge_still_present.png")
         return False
 
