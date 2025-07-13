@@ -3,6 +3,8 @@ import sys
 import json
 import argparse
 import re
+import shutil
+import subprocess
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Dict, Union, Tuple
 from seleniumbase import SB
@@ -60,6 +62,18 @@ def parse_sites_file(filename: str) -> List[Tuple[str, Union[Dict, None], Union[
                 except json.JSONDecodeError: print(f"[WARN] Invalid JSON in headers for URL: {url}. Skipping.")
             scrape_targets.append((url, payload, headers))
     return scrape_targets
+
+def run_automation_scrapers(sb, special_tasks, results):
+    """Helper function to run sequential automation tasks within a browser context."""
+    for name, func in special_tasks.items():
+        try:
+            print(f"[RUNNING] Automation scraper '{name}'...")
+            proxies = func(sb)
+            results[name] = proxies
+            print(f"[COMPLETED] '{name}' finished, found {len(proxies)} proxies.")
+        except Exception as e:
+            results[name] = []
+            print(f"[ERROR] Automation scraper '{name}' failed: {e}")
 
 def main():
     parser = argparse.ArgumentParser(description="A powerful, multi-source proxy scraper.")
@@ -152,6 +166,26 @@ def main():
     special_tasks = {name: func for name, func in tasks_to_run.items() if name in SPECIAL_CASE_SCRAPER_NAMES}
     normal_tasks = {name: func for name, func in tasks_to_run.items() if name not in SPECIAL_CASE_SCRAPER_NAMES}
 
+    # --- NEW: Logic to handle Linux/WSL automation ---
+    if special_tasks and sys.platform == "linux":
+        # Check if we are already inside a virtual display
+        if not os.environ.get('DISPLAY'):
+            print("[INFO] Linux/WSL detected. Checking for virtual display wrapper (xvfb-run)...")
+            if shutil.which("xvfb-run"):
+                print("[INFO] xvfb-run found. Re-launching script inside a virtual display...")
+                # Re-run the script under xvfb-run. It will inherit all original arguments.
+                command = ['xvfb-run', '--auto-servernum'] + [sys.executable, '-m'] + sys.argv
+                subprocess.run(command)
+                # After the re-launched script finishes, the original script should exit.
+                sys.exit(0)
+            else:
+                print("\n[ERROR] xvfb-run is not installed. This is required for automation on headless Linux/WSL.")
+                print("[INFO] Please install it using: sudo apt-get update && sudo apt-get install -y xvfb")
+                # Mark special tasks as failed and continue with normal tasks
+                for name in special_tasks.keys():
+                    results[name] = []
+                special_tasks = {} # Clear special tasks so they don't run
+
     normal_executor = ThreadPoolExecutor(max_workers=args.threads, thread_name_prefix='NormalScraper')
     future_to_scraper = {}
 
@@ -164,16 +198,8 @@ def main():
 
         if special_tasks:
             print(f"\n--- Initializing single browser for {len(special_tasks)} sequential automation scraper(s) ---")
-            with SB(uc=True, headed=True, headless=False, disable_csp=True) as sb:
-                for name, func in special_tasks.items():
-                    try:
-                        print(f"[RUNNING] Automation scraper '{name}'...")
-                        proxies = func(sb)
-                        results[name] = proxies
-                        print(f"[COMPLETED] '{name}' finished, found {len(proxies)} proxies.")
-                    except Exception as e:
-                        results[name] = []
-                        print(f"[ERROR] Automation scraper '{name}' failed: {e}")
+            with SB(uc=True, headed=True, disable_csp=True) as sb:
+                run_automation_scrapers(sb, special_tasks, results)
 
         print("\n--- Waiting for normal scrapers to complete... ---")
         for future in as_completed(future_to_scraper):
