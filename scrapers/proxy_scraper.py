@@ -9,6 +9,10 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 # Patterns are ordered from most specific/reliable to most generic/broad.
 PATTERNS = [
     # --- High Priority: Very specific and low risk of false positives ---
+
+    # A very selective regex for ProxyDB
+    r'<td>\s*<a[^>]*>(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})</a>\s*</td>\s*<td>[\s\S]*?<a[^>]*>(\d{2,5})</a>',
+
     # 1. Matches `IP:PORT` inside quotes, common in JS/JSON.
     r'["\'](\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}):(\d{2,5})["\']',
     
