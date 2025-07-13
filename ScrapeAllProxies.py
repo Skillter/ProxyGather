@@ -166,25 +166,22 @@ def main():
     special_tasks = {name: func for name, func in tasks_to_run.items() if name in SPECIAL_CASE_SCRAPER_NAMES}
     normal_tasks = {name: func for name, func in tasks_to_run.items() if name not in SPECIAL_CASE_SCRAPER_NAMES}
 
-    # --- NEW: Logic to handle Linux/WSL automation ---
     if special_tasks and sys.platform == "linux":
-        # Check if we are already inside a virtual display
         if not os.environ.get('DISPLAY'):
             print("[INFO] Linux/WSL detected. Checking for virtual display wrapper (xvfb-run)...")
             if shutil.which("xvfb-run"):
                 print("[INFO] xvfb-run found. Re-launching script inside a virtual display...")
-                # Re-run the script under xvfb-run. It will inherit all original arguments.
-                command = ['xvfb-run', '--auto-servernum'] + [sys.executable, '-m'] + sys.argv
+                # --- FIX: Re-launch by deriving the module name from the script path ---
+                module_name = os.path.basename(sys.argv[0]).replace('.py', '')
+                command = [shutil.which("xvfb-run"), '--auto-servernum', sys.executable, '-m', module_name] + sys.argv[1:]
                 subprocess.run(command)
-                # After the re-launched script finishes, the original script should exit.
                 sys.exit(0)
             else:
                 print("\n[ERROR] xvfb-run is not installed. This is required for automation on headless Linux/WSL.")
                 print("[INFO] Please install it using: sudo apt-get update && sudo apt-get install -y xvfb")
-                # Mark special tasks as failed and continue with normal tasks
                 for name in special_tasks.keys():
                     results[name] = []
-                special_tasks = {} # Clear special tasks so they don't run
+                special_tasks = {}
 
     normal_executor = ThreadPoolExecutor(max_workers=args.threads, thread_name_prefix='NormalScraper')
     future_to_scraper = {}
