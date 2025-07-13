@@ -5,8 +5,8 @@ import argparse
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Dict, Union, Tuple
+from seleniumbase import SB
 
-# Import from all our library packages
 from scrapers.proxy_scraper import scrape_proxies
 from scrapers.proxyscrape_api_fetcher import fetch_from_api
 from scrapers.proxydb_scraper import scrape_all_from_proxydb
@@ -21,7 +21,6 @@ from automation_scrapers.openproxylist_scraper import scrape_from_openproxylist
 from automation_scrapers.webshare_scraper import scrape_from_webshare
 from automation_scrapers.hidemn_scraper import scrape_from_hidemn
 
-# --- Configuration ---
 SITES_FILE = 'sites-to-get-proxies-from.txt'
 DEFAULT_OUTPUT_FILE = 'scraped-proxies.txt'
 
@@ -30,9 +29,7 @@ INVALID_IP_REGEX = re.compile(
 )
 
 def save_proxies_to_file(proxies: list, filename: str):
-    """Saves a list of proxies to a text file, creating the directory if it doesn't exist."""
     try:
-        # this logic correctly handles creating directories like "proxies/"
         directory = os.path.dirname(filename)
         if directory and not os.path.exists(directory):
             print(f"[INFO] Creating output directory: {directory}")
@@ -46,9 +43,6 @@ def save_proxies_to_file(proxies: list, filename: str):
         print(f"\n[ERROR] Could not write to file '{filename}': {e}")
 
 def parse_sites_file(filename: str) -> List[Tuple[str, Union[Dict, None], Union[Dict, None]]]:
-    """
-    Parses the sites file, which can contain a URL and optional JSON for payload and headers.
-    """
     scrape_targets = []
     with open(filename, 'r', encoding='utf-8') as f:
         for line in f:
@@ -68,13 +62,9 @@ def parse_sites_file(filename: str) -> List[Tuple[str, Union[Dict, None], Union[
     return scrape_targets
 
 def main():
-    """
-    Main function to run all scrapers concurrently, combine results, and save them.
-    """
     parser = argparse.ArgumentParser(description="A powerful, multi-source proxy scraper.")
     parser.add_argument('--output', default=DEFAULT_OUTPUT_FILE, help=f"The output file for scraped proxies. Defaults to '{DEFAULT_OUTPUT_FILE}'.")
     parser.add_argument('--threads', type=int, default=50, help="Number of threads for scrapers. Default: 50")
-    parser.add_argument('--solana-threads', type=int, default=3, help="Dedicated (lower) thread count for automation scrapers. Default: 3")
     parser.add_argument('--remove-dead-links', action='store_true', help="Removes URLs from the sites file that return no proxies.")
     parser.add_argument('-v', '--verbose', action='store_true', help="Enable detailed logging for each scraper.")
     
@@ -84,7 +74,6 @@ def main():
     
     args = parser.parse_args()
 
-    # we define the tasks after parsing args so we can pass the verbose flag
     all_scraper_tasks = {
         'ProxyScrape': lambda: fetch_from_api(verbose=args.verbose),
         'ProxyDB': lambda: scrape_all_from_proxydb(verbose=args.verbose),
@@ -94,19 +83,18 @@ def main():
         'XSEO': lambda: scrape_from_xseo(verbose=args.verbose),
         'GoLogin': lambda: scrape_from_gologin_api(verbose=args.verbose),
         'ProxyHttp': lambda: scrape_from_proxyhttp(verbose=args.verbose),
-        'OpenProxyList': lambda: scrape_from_openproxylist(verbose=args.verbose),
-        'Webshare': lambda: scrape_from_webshare(verbose=args.verbose),
-        # 'Hide.mn': lambda: scrape_from_hidemn(verbose=args.verbose), # NOT WORKING, uses turnstile
+        'OpenProxyList': lambda sb: scrape_from_openproxylist(sb, verbose=args.verbose),
+        'Webshare': lambda sb: scrape_from_webshare(sb, verbose=args.verbose),
+        'Hide.mn': lambda sb: scrape_from_hidemn(sb, verbose=args.verbose),
     }
     
     SPECIAL_CASE_SCRAPER_NAMES = [
         'OpenProxyList', 
         'Webshare', 
-        # 'Hide.mn', # NOT WORKING, uses turnstile
+        'Hide.mn',
     ]
 
     general_scraper_name = f'Websites'
-    
     all_scraper_names = sorted(list(all_scraper_tasks.keys()) + [general_scraper_name])
 
     if (args.only is not None and not args.only) or (args.exclude is not None and not args.exclude):
@@ -117,7 +105,7 @@ def main():
             if (name == general_scraper_name) or (name in SPECIAL_CASE_SCRAPER_NAMES): 
                 continue
             print(f"  {name}")
-        print("Dedicated Solana scrapers that are heavier to run:")
+        print("Dedicated automation scrapers that are heavier to run:")
         for name in SPECIAL_CASE_SCRAPER_NAMES:
             print(f"  {name}")
         sys.exit(0)
@@ -127,7 +115,6 @@ def main():
         scrape_targets = parse_sites_file(SITES_FILE)
         if scrape_targets:
             def general_scraper_task():
-                # make sure the general scraper also respects the verbose flag
                 return scrape_proxies(scrape_targets, verbose=args.verbose, max_workers=args.threads)
             tasks_to_run[general_scraper_name] = general_scraper_task
     except FileNotFoundError:
@@ -162,29 +149,33 @@ def main():
     results = {}
     successful_general_urls = []
     
-    special_case_tasks = {name: func for name, func in tasks_to_run.items() if name in SPECIAL_CASE_SCRAPER_NAMES}
+    special_tasks = {name: func for name, func in tasks_to_run.items() if name in SPECIAL_CASE_SCRAPER_NAMES}
     normal_tasks = {name: func for name, func in tasks_to_run.items() if name not in SPECIAL_CASE_SCRAPER_NAMES}
 
-    special_executor = ThreadPoolExecutor(max_workers=args.solana_threads, thread_name_prefix='SolanaScraper')
     normal_executor = ThreadPoolExecutor(max_workers=args.threads, thread_name_prefix='NormalScraper')
+    future_to_scraper = {}
 
     try:
-        future_to_scraper = {}
-        
-        if special_case_tasks:
-            print(f"\n--- Submitting {len(special_case_tasks)} special-case scraper(s) to a pool of {args.solana_threads} threads ---")
-            for name, func in special_case_tasks.items():
-                future = special_executor.submit(func)
-                future_to_scraper[future] = name
-
         if normal_tasks:
             print(f"--- Submitting {len(normal_tasks)} normal scraper(s) to a pool of {args.threads} threads ---")
             for name, func in normal_tasks.items():
                 future = normal_executor.submit(func)
                 future_to_scraper[future] = name
 
-        print("\n--- All scrapers submitted. Waiting for results... ---")
+        if special_tasks:
+            print(f"\n--- Initializing single browser for {len(special_tasks)} sequential automation scraper(s) ---")
+            with SB(uc=True, headed=True, disable_csp=True) as sb:
+                for name, func in special_tasks.items():
+                    try:
+                        print(f"[RUNNING] Automation scraper '{name}'...")
+                        proxies = func(sb)
+                        results[name] = proxies
+                        print(f"[COMPLETED] '{name}' finished, found {len(proxies)} proxies.")
+                    except Exception as e:
+                        results[name] = []
+                        print(f"[ERROR] Automation scraper '{name}' failed: {e}")
 
+        print("\n--- Waiting for normal scrapers to complete... ---")
         for future in as_completed(future_to_scraper):
             name = future_to_scraper[future]
             try:
@@ -202,7 +193,6 @@ def main():
                 print(f"[ERROR] Scraper '{name}' failed: {e}")
 
     finally:
-        special_executor.shutdown()
         normal_executor.shutdown()
 
     print("\n--- Combining and processing all results ---")
