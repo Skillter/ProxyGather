@@ -9,6 +9,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Dict, Union, Tuple
 from seleniumbase import SB
 
+# Import scrapers
 from scrapers.proxy_scraper import scrape_proxies
 from scrapers.proxyscrape_api_fetcher import fetch_from_api
 from scrapers.proxydb_scraper import scrape_all_from_proxydb
@@ -22,6 +23,7 @@ from scrapers.proxyhttp_scraper import scrape_from_proxyhttp
 from automation_scrapers.openproxylist_scraper import scrape_from_openproxylist
 from automation_scrapers.webshare_scraper import scrape_from_webshare
 from automation_scrapers.hidemn_scraper import scrape_from_hidemn
+from helper.captcha_manager import CaptchaManager
 
 SITES_FILE = 'sites-to-get-proxies-from.txt'
 DEFAULT_OUTPUT_FILE = 'scraped-proxies.txt'
@@ -82,6 +84,8 @@ def main():
     parser.add_argument('--remove-dead-links', action='store_true', help="Removes URLs from the sites file that return no proxies.")
     parser.add_argument('-v', '--verbose', action='store_true', help="Enable detailed logging for each scraper.")
     
+    parser.add_argument('--automation-threads', type=int, default=3, help="Max concurrent automation scrapers. Default: 3")
+
     group = parser.add_mutually_exclusive_group()
     group.add_argument('--only', nargs='*', help="Only run the specified scrapers (case-insensitive). Pass with no values to see choices.")
     group.add_argument('--exclude', '--except', nargs='*', help="Exclude scrapers from the run (case-insensitive). Pass with no values to see choices.")
@@ -97,12 +101,12 @@ def main():
         'XSEO': lambda: scrape_from_xseo(verbose=args.verbose),
         'GoLogin': lambda: scrape_from_gologin_api(verbose=args.verbose),
         'ProxyHttp': lambda: scrape_from_proxyhttp(verbose=args.verbose),
-        'OpenProxyList': lambda sb: scrape_from_openproxylist(sb, verbose=args.verbose),
-        'Webshare': lambda sb: scrape_from_webshare(sb, verbose=args.verbose),
-        'Hide.mn': lambda sb: scrape_from_hidemn(sb, verbose=args.verbose),
+        'OpenProxyList': lambda sb, tab, cm: scrape_from_openproxylist(sb, tab, cm, verbose=args.verbose),
+        'Webshare': lambda sb, tab, cm: scrape_from_webshare(sb, tab, cm, verbose=args.verbose),
+        'Hide.mn': lambda sb, tab, cm: scrape_from_hidemn(sb, tab, cm, verbose=args.verbose),
     }
     
-    SPECIAL_CASE_SCRAPER_NAMES = [
+    AUTOMATION_SCRAPER_NAMES  = [
         'OpenProxyList', 
         'Webshare', 
         'Hide.mn',
@@ -182,10 +186,11 @@ def main():
                     results[name] = []
                 special_tasks = {}
 
-    normal_executor = ThreadPoolExecutor(max_workers=args.threads, thread_name_prefix='NormalScraper')
-    future_to_scraper = {}
-
-    try:
+    captcha_manager = CaptchaManager()
+    
+    with ThreadPoolExecutor(max_workers=args.threads, thread_name_prefix='NormalScraper') as normal_executor:
+        future_to_scraper = {}
+        
         if normal_tasks:
             print(f"--- Submitting {len(normal_tasks)} normal scraper(s) to a pool of {args.threads} threads ---")
             for name, func in normal_tasks.items():
@@ -193,11 +198,23 @@ def main():
                 future_to_scraper[future] = name
 
         if special_tasks:
-            print(f"\n--- Initializing single browser for {len(special_tasks)} sequential automation scraper(s) ---")
+            print(f"\n--- Initializing single browser for {len(special_tasks)} concurrent automation scraper(s) ---")
             with SB(uc=True, headed=True, disable_csp=True) as sb:
-                run_automation_scrapers(sb, special_tasks, results)
+                # Use a separate executor for the browser tasks
+                with ThreadPoolExecutor(max_workers=args.automation_threads, thread_name_prefix='AutomationScraper') as automation_executor:
+                    # Open a blank starting tab to keep tab 0 clean
+                    sb.open("about:blank")
+                    
+                    for name, func in special_tasks.items():
+                        # Create a new tab for each scraper before submitting the job
+                        sb.open_new_tab()
+                        tab_handle = sb.get_current_window_handle()
+                        
+                        # Submit the job with the shared sb, its new tab, and the captcha manager
+                        future = automation_executor.submit(func, sb, tab_handle, captcha_manager)
+                        future_to_scraper[future] = name
 
-        print("\n--- Waiting for normal scrapers to complete... ---")
+        print("\n--- Waiting for all scrapers to complete... ---")
         for future in as_completed(future_to_scraper):
             name = future_to_scraper[future]
             try:
@@ -214,8 +231,6 @@ def main():
                 results[name] = []
                 print(f"[ERROR] Scraper '{name}' failed: {e}")
 
-    finally:
-        normal_executor.shutdown()
 
     print("\n--- Combining and processing all results ---")
     combined_proxies = []
