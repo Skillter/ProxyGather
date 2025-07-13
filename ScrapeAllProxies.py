@@ -164,7 +164,7 @@ def main():
 
         if special_tasks:
             print(f"\n--- Initializing single browser for {len(special_tasks)} sequential automation scraper(s) ---")
-            with SB(uc=True, headed=True, disable_csp=True) as sb:
+            with SB(uc=True, headed=True, headless=False, disable_csp=True) as sb:
                 for name, func in special_tasks.items():
                     try:
                         print(f"[RUNNING] Automation scraper '{name}'...")
