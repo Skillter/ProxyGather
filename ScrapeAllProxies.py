@@ -171,7 +171,6 @@ def main():
             print("[INFO] Linux/WSL detected. Checking for virtual display wrapper (xvfb-run)...")
             if shutil.which("xvfb-run"):
                 print("[INFO] xvfb-run found. Re-launching script inside a virtual display...")
-                # --- FIX: Re-launch by deriving the module name from the script path ---
                 module_name = os.path.basename(sys.argv[0]).replace('.py', '')
                 command = [shutil.which("xvfb-run"), '--auto-servernum', sys.executable, '-m', module_name] + sys.argv[1:]
                 subprocess.run(command)
