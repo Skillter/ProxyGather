@@ -1,51 +1,34 @@
 import time
 import requests
 import re
-from DrissionPage import ChromiumPage, ChromiumOptions 
 from typing import List
 import sys
 import os
 
 from scrapers.proxy_scraper import extract_proxies_from_content
 
-# --- Configuration ---
 BROWSER_VISIT_URL = "https://openproxylist.com/proxy/"
 POST_TARGET_URL = "https://openproxylist.com/get-list.html"
 
-def scrape_from_openproxylist(verbose: bool = True) -> List[str]:
+def scrape_from_openproxylist(sb, verbose: bool = True) -> List[str]:
     """
-    Scrapes proxies from OpenProxyList using DrissionPage in headless mode.
+    Scrapes proxies from OpenProxyList using a shared SeleniumBase browser instance.
     """
     if verbose:
-        print("[RUNNING] 'OpenProxyList' automation scraper has started (using DrissionPage).")
+        print("[RUNNING] 'OpenProxyList' automation scraper has started (using SeleniumBase).")
     
     all_proxies = set()
-    page = None
     
     try:
-        # --- Step 1: Initialize the browser with DrissionPage ---
-        if verbose:
-            print("[INFO] OpenProxyList: Initializing browser with DrissionPage...")
-        
-        co = ChromiumOptions()
-        co.set_argument("--headless", "new")
-
-        # the github actions runner needs this, even if not running as root
-        if sys.platform == "linux":
-            print("[WARNING] You are running the script on Linux. Applying --no-sandbox as a workaround.")
-            co.set_argument('--no-sandbox')
-        
-        page = ChromiumPage(co)
-
         if verbose:
             print(f"[INFO] OpenProxyList: Navigating to {BROWSER_VISIT_URL} to prepare for token generation...")
-        page.get(BROWSER_VISIT_URL)
+        sb.open(BROWSER_VISIT_URL)
+        sb.wait_for_ready_state_complete()
 
-        # --- Step 2: Dynamically find the reCAPTCHA site key ---
         if verbose:
             print("[INFO] OpenProxyList: Searching for dynamic reCAPTCHA site key...")
         
-        html_content = page.html
+        html_content = sb.get_page_source()
         site_key_regex = re.compile(r'recaptcha/api\.js\?render=([\w-]+)')
         match = site_key_regex.search(html_content)
         
@@ -61,7 +44,6 @@ def scrape_from_openproxylist(verbose: bool = True) -> List[str]:
         if verbose:
             print("[INFO] OpenProxyList: reCAPTCHA library should be loaded. Starting page scraping.")
         
-        # --- Step 3: Loop through pages, generating a new token each time ---
         page_num = 1
         session = requests.Session()
 
@@ -70,7 +52,7 @@ def scrape_from_openproxylist(verbose: bool = True) -> List[str]:
                 print(f"[INFO] OpenProxyList: Generating new token for page {page_num}...")
             
             js_command = f"return grecaptcha.execute('{recaptcha_site_key}', {{action: 'proxy'}})"
-            token = page.run_js(js_command)
+            token = sb.execute_script(js_command)
 
             if not token:
                 if verbose:
@@ -110,7 +92,7 @@ def scrape_from_openproxylist(verbose: bool = True) -> List[str]:
                     break
 
                 page_num += 1
-                time.sleep(1) # a small delay between post requests
+                time.sleep(1)
 
             except requests.RequestException as e:
                 if verbose:
@@ -119,14 +101,7 @@ def scrape_from_openproxylist(verbose: bool = True) -> List[str]:
     
     except Exception as e:
         if verbose:
-            print(f"[ERROR] DrissionPage scraper failed with an exception: {e}")
-
-    finally:
-        # --- Step 4: Close the browser ---
-        if page:
-            if verbose:
-                print("[INFO] OpenProxyList: Shutting down the browser.")
-            page.quit()
+            print(f"[ERROR] OpenProxyList scraper failed with an exception: {e}")
 
     if verbose:
         print(f"[INFO] OpenProxyList: Finished. Found a total of {len(all_proxies)} unique proxies.")
