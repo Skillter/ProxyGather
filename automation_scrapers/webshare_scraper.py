@@ -1,49 +1,37 @@
 import time
 import requests
-from DrissionPage import ChromiumPage, ChromiumOptions
 from typing import List, Dict, Optional
 import random
 import string
 import json
 import os
 
-# --- Configuration ---
 LOGIN_URL = "https://dashboard.webshare.io/login"
 REGISTER_URL = "https://dashboard.webshare.io/register/?source=nav_register"
 PROXY_LIST_API_URL = "https://proxy.webshare.io/api/v2/proxy/list/?mode=direct&page=1&page_size=10"
 CREDENTIALS_FILE = "credentials.json"
 
 USERNAME_WORDS = [
-    # Tech/Sci-Fi
     "shadow", "viper", "glitch", "nexus", "pulse", "void", "nova", "cobra",
     "raven", "bolt", "phantom", "wraith", "serpent", "hawk", "blade", "storm",
     "titan", "golem", "echo", "cipher", "vector", "quark", "hydro", "pyro",
     "aero", "terra", "luna", "solar", "cyborg", "laser", "plasma", "droid",
     "matrix", "nebula", "comet", "orbit", "ryzen", "intel", "core", "volta",
-    
-    # Fantasy/Mythical
     "dragon", "griffin", "sphinx", "wizard", "mage", "sorcerer", "warlock",
     "elf", "orc", "goblin", "troll", "nymph", "siren", "phoenix", "hydra",
     "kraken", "cyclops", "minotaur", "centaur", "pixie", "sprite", "banshee",
-    
-    # Nature/Animals
     "wolf", "tiger", "panther", "jaguar", "cougar", "lynx", "falcon", "eagle",
     "hornet", "wasp", "spider", "scorpion", "shark", "whale", "orca",
     "forest", "mountain", "river", "ocean", "desert", "jungle", "canyon",
     "meadow", "stream", "pebble", "boulder", "root", "branch",
-    
-    # Abstract/Concepts
     "king", "queen", "ace", "jack", "joker", "spade", "omega", "alpha", "beta",
     "delta", "gamma", "sigma", "theta", "zeta", "axiom", "enigma", "paradox",
     "vertex", "zenith", "nadir", "karma", "chaos", "order", "logic", "fate",
-    
-    # Objects/Misc
     "anchor", "compass", "hammer", "anvil", "shield", "sword", "arrow", "bow",
     "needle", "thread", "key", "lock", "chain", "gear", "engine", "piston"
 ]
 
 def _generate_random_email():
-    """Generates a plausible, word-based random email address."""
     word1 = random.choice(USERNAME_WORDS)
     word2 = random.choice(USERNAME_WORDS)
     while word1 == word2:
@@ -51,11 +39,9 @@ def _generate_random_email():
     return f"{word1}{word2}@gmail.com"
 
 def _generate_random_password():
-    """Generates a random password."""
     return f"TestPass_{''.join(random.choices(string.ascii_lowercase + string.digits, k=10))}!"
 
 def _load_credentials() -> Dict:
-    """Loads credentials from the JSON file."""
     if not os.path.exists(CREDENTIALS_FILE):
         return {}
     try:
@@ -65,7 +51,6 @@ def _load_credentials() -> Dict:
         return {}
 
 def _save_credentials(creds: Dict):
-    """Saves the credentials dictionary to the JSON file."""
     try:
         with open(CREDENTIALS_FILE, 'w') as f:
             json.dump(creds, f, indent=4)
@@ -73,7 +58,6 @@ def _save_credentials(creds: Dict):
         print(f"[ERROR] Could not save credentials to '{CREDENTIALS_FILE}': {e}")
 
 def _try_direct_api_call(creds: Dict, verbose: bool) -> Optional[List[str]]:
-    """Attempts to fetch proxies directly using saved cookies."""
     if verbose: print("[INFO] Webshare: Found saved session. Attempting direct API call...")
     try:
         session = requests.Session()
@@ -111,87 +95,54 @@ def _try_direct_api_call(creds: Dict, verbose: bool) -> Optional[List[str]]:
         if verbose: print(f"[INFO] Webshare: Direct API call failed (session likely expired). Falling back to browser login. Error: {e}")
         return None
 
-def _login(page: ChromiumPage, creds: Dict, verbose: bool) -> bool:
-    """Attempts to log in with existing credentials using DrissionPage."""
+def _login(sb, creds: Dict, verbose: bool) -> bool:
     if verbose: print(f"[INFO] Webshare: Attempting to log in as {creds['email']}...")
     try:
-        page.get(LOGIN_URL)
-        
-        if verbose: print("[INFO] Webshare: Waiting for page to be interactive...")
-        page.wait.doc_loaded(timeout=20)
-        time.sleep(2) # extra wait for js to render
-
-        if verbose: print("[INFO] Webshare: Finding elements via direct JavaScript execution...")
-        email_input = page.run_js('return document.querySelector("#email-input")')
-        password_input = page.run_js('return document.querySelector("input[data-testid=password-input]")')
-        login_button = page.run_js('return document.querySelector("button[data-testid=signin-button]")')
-        
-        if not all([email_input, password_input, login_button]):
-            raise Exception("Could not find all required form elements via JavaScript.")
-
-        if verbose: print("[INFO] Webshare: Entering credentials...")
-        email_input.input(creds['email'])
-        time.sleep(0.5)
-        password_input.input(creds['password'])
-        time.sleep(0.5)
-        login_button.click()
-
-        page.wait.url_change('/proxy/list', timeout=10)
-        if '/proxy/list' not in page.url:
+        sb.open(LOGIN_URL)
+        sb.wait_for_element("input#email-input")
+        sb.type("input#email-input", creds['email'])
+        sb.type("input[data-testid=password-input]", creds['password'])
+        sb.click("button[data-testid=signin-button]")
+        sb.wait_for_url_change('/proxy/list', timeout=10)
+        if '/proxy/list' not in sb.get_current_url():
             raise Exception("Login failed, page did not redirect to proxy list.")
-
         if verbose: print("[SUCCESS] Webshare: Login successful.")
         return True
-            
     except Exception as e:
         if verbose: print(f"[WARN] Webshare: An error occurred during login attempt: {e}. Will try to register.")
         return False
 
-def _register(page: ChromiumPage, verbose: bool) -> Dict:
-    """Performs the registration process using DrissionPage."""
+def _register(sb, verbose: bool) -> Dict:
     if verbose: print("[INFO] Webshare: Starting new registration process.")
-    page.get(REGISTER_URL)
-
-    if verbose: print("[INFO] Webshare: Waiting for page to be interactive...")
-    page.wait.doc_loaded(timeout=20)
-    time.sleep(2) # extra wait for js to render
-
-    if verbose: print("[INFO] Webshare: Finding elements via direct JavaScript execution...")
-    email_input = page.run_js('return document.querySelector("#email-input")')
-    password_input = page.run_js('return document.querySelector("input[data-testid=password-input]")')
-    signup_button = page.run_js('return document.querySelector("button[data-testid=signup-button]")')
-
-    if not all([email_input, password_input, signup_button]):
-        raise Exception("Could not find all required form elements via JavaScript.")
+    sb.open(REGISTER_URL)
+    sb.wait_for_element("input#email-input")
 
     email = _generate_random_email()
     password = _generate_random_password()
     
     if verbose: print(f"[INFO] Webshare: Simulating typing for new account: {email}")
-    email_input.input(email)
-    time.sleep(0.5)
-    password_input.input(password)
-    time.sleep(1)
-    signup_button.click()
+    sb.type("input#email-input", email)
+    sb.type("input[data-testid=password-input]", password)
+    sb.click("button[data-testid=signup-button]")
 
     print("\n" + "="*70 + "\nACTION REQUIRED: Please solve the CAPTCHA in the browser.\n" + "="*70 + "\n")
 
-    start_button = page.ele("text:Let's Get Started", timeout=120)
+    sb.wait_for_element('button:contains("Let\'s Get Started")', timeout=120)
     if verbose: print("[INFO] Webshare: 'Let's Get Started' button found. Clicking...")
     time.sleep(1)
-    start_button.click()
+    sb.click('button:contains("Let\'s Get Started")')
     
-    page.wait.url_change('/proxy/list', timeout=20)
-    if '/proxy/list' not in page.url:
+    sb.wait_for_url_change('/proxy/list', timeout=20)
+    if '/proxy/list' not in sb.get_current_url():
         raise Exception("Registration failed, page did not redirect to proxy list.")
 
     if verbose: print("[SUCCESS] Webshare: Registration and onboarding complete.")
     return {'email': email, 'password': password}
 
-def scrape_from_webshare(verbose: bool = True) -> List[str]:
+def scrape_from_webshare(sb, verbose: bool = True) -> List[str]:
     """
     Tries to use a saved session first. If that fails, logs in or registers
-    a new account using DrissionPage.
+    a new account using the shared SeleniumBase browser instance.
     """
     if verbose: print("[RUNNING] 'Webshare.io' automation scraper has started.")
     all_credentials = _load_credentials()
@@ -202,36 +153,20 @@ def scrape_from_webshare(verbose: bool = True) -> List[str]:
         if proxies is not None:
             return proxies
     
-    page = None
     try:
-        if verbose: print("[INFO] Webshare: Initializing browser with DrissionPage to get a new session...")
-        
-        co = ChromiumOptions()
-        co.set_argument("--headless", False)
-
-        # the github actions runner needs this, even if not running as root
-        if sys.platform == "linux":
-            print("[WARNING] You are running the script on Linux. Applying --no-sandbox as a workaround.")
-            co.set_argument('--no-sandbox')
-        
-
-
-        # run visibly since it may require user interaction for captcha
-        page = ChromiumPage(co)
-        
         logged_in = False
         if webshare_data and 'email' in webshare_data:
-            logged_in = _login(page, webshare_data, verbose)
+            logged_in = _login(sb, webshare_data, verbose)
 
         new_session_data = {}
         if not logged_in:
-            new_session_data = _register(page, verbose)
+            new_session_data = _register(sb, verbose)
         else:
             new_session_data = webshare_data
 
         if verbose: print("[INFO] Webshare: Extracting fresh authentication cookies...")
         time.sleep(2)
-        cookies = page.cookies()
+        cookies = sb.get_cookies()
         auth_cookies = {cookie['name']: cookie['value'] for cookie in cookies}
         
         if 'newDesignLoginToken' not in auth_cookies:
@@ -247,8 +182,3 @@ def scrape_from_webshare(verbose: bool = True) -> List[str]:
     except Exception as e:
         print(f"[ERROR] Webshare scraper failed: {e}")
         return []
-
-    finally:
-        if page:
-            if verbose: print("[INFO] Webshare: Shutting down the browser.")
-            page.quit()
