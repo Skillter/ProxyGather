@@ -21,6 +21,17 @@ jobs:
       uses: actions/setup-python@v3
       with:
         python-version: "3.12.9"
+    - name: Cache pip dependencies
+      uses: actions/cache@v4
+      with:
+        # the directory that should be cached
+        path: ~/.cache/pip
+        # A key to identify the cache. It's created from the runner's OS and a hash of requirements.txt.
+        # If requirements.txt changes, a new cache will be created.
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        # A fallback key to use if the primary key doesn't have a cache hit.
+        restore-keys: |
+          ${{ runner.os }}-pip-
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
