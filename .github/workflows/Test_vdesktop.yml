@@ -27,7 +27,7 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        sudo apt-get install -y python3-tk python3-dev xvfb libgl1-mesa-glx libglib2.0-0
+        sudo apt-get install -y python3-tk python3-dev xvfb libglib2.0-0
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
     - name: Run the proxy scraper
       run: |
