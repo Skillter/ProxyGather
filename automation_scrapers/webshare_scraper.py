@@ -1,10 +1,13 @@
 import time
 import requests
+import threading
 from typing import List, Dict, Optional
 import random
 import string
 import json
 import os
+from seleniumbase import BaseCase
+from selenium.webdriver.support.ui import WebDriverWait
 
 LOGIN_URL = "https://dashboard.webshare.io/login"
 REGISTER_URL = "https://dashboard.webshare.io/register/?source=nav_register"
@@ -95,7 +98,7 @@ def _try_direct_api_call(creds: Dict, verbose: bool) -> Optional[List[str]]:
         if verbose: print(f"[INFO] Webshare: Direct API call failed (session likely expired). Falling back to browser login. Error: {e}")
         return None
 
-def _login(sb, creds: Dict, verbose: bool) -> bool:
+def _login(sb: BaseCase, creds: Dict, verbose: bool) -> bool:
     if verbose: print(f"[INFO] Webshare: Attempting to log in as {creds['email']}...")
     try:
         sb.open(LOGIN_URL)
@@ -103,7 +106,10 @@ def _login(sb, creds: Dict, verbose: bool) -> bool:
         sb.type("input#email-input", creds['email'])
         sb.type("input[data-testid=password-input]", creds['password'])
         sb.click("button[data-testid=signin-button]")
-        sb.wait_for_url_change('/proxy/list', timeout=10)
+        
+        wait = WebDriverWait(sb.driver, 15)
+        wait.until(lambda driver: '/proxy/list' in driver.current_url)
+
         if '/proxy/list' not in sb.get_current_url():
             raise Exception("Login failed, page did not redirect to proxy list.")
         if verbose: print("[SUCCESS] Webshare: Login successful.")
@@ -112,7 +118,7 @@ def _login(sb, creds: Dict, verbose: bool) -> bool:
         if verbose: print(f"[WARN] Webshare: An error occurred during login attempt: {e}. Will try to register.")
         return False
 
-def _register(sb, verbose: bool) -> Dict:
+def _register(sb: BaseCase, verbose: bool) -> Dict:
     if verbose: print("[INFO] Webshare: Starting new registration process.")
     sb.open(REGISTER_URL)
     sb.wait_for_element("input#email-input")
@@ -125,26 +131,25 @@ def _register(sb, verbose: bool) -> Dict:
     sb.type("input[data-testid=password-input]", password)
     sb.click("button[data-testid=signup-button]")
 
-    print("\n" + "="*70 + "\nACTION REQUIRED: Please solve the CAPTCHA in the browser.\n" + "="*70 + "\n")
-
+    print("\n" + "="*70 + "\nACTION REQUIRED: Please solve the CAPTCHA in the Webshare tab.\n" + "="*70 + "\n")
+    
     sb.wait_for_element('button:contains("Let\'s Get Started")', timeout=120)
-    if verbose: print("[INFO] Webshare: 'Let's Get Started' button found. Clicking...")
-    time.sleep(1)
+    if verbose: print("[INFO] Webshare: 'Let\'s Get Started' button found. Clicking...")
+    time.sleep(2)
     sb.click('button:contains("Let\'s Get Started")')
     
-    sb.wait_for_url_change('/proxy/list', timeout=20)
+    wait = WebDriverWait(sb.driver, 25)
+    wait.until(lambda driver: '/proxy/list' in driver.current_url)
+
     if '/proxy/list' not in sb.get_current_url():
         raise Exception("Registration failed, page did not redirect to proxy list.")
 
     if verbose: print("[SUCCESS] Webshare: Registration and onboarding complete.")
     return {'email': email, 'password': password}
 
-def scrape_from_webshare(sb, verbose: bool = True) -> List[str]:
-    """
-    Tries to use a saved session first. If that fails, logs in or registers
-    a new account using the shared SeleniumBase browser instance.
-    """
+def scrape_from_webshare(sb: BaseCase, browser_lock: threading.Lock, verbose: bool = True) -> List[str]:
     if verbose: print("[RUNNING] 'Webshare.io' automation scraper has started.")
+    
     all_credentials = _load_credentials()
     webshare_data = all_credentials.get('webshare')
 
@@ -153,32 +158,46 @@ def scrape_from_webshare(sb, verbose: bool = True) -> List[str]:
         if proxies is not None:
             return proxies
     
-    try:
-        logged_in = False
-        if webshare_data and 'email' in webshare_data:
-            logged_in = _login(sb, webshare_data, verbose)
-
-        new_session_data = {}
-        if not logged_in:
-            new_session_data = _register(sb, verbose)
-        else:
-            new_session_data = webshare_data
-
-        if verbose: print("[INFO] Webshare: Extracting fresh authentication cookies...")
-        time.sleep(2)
-        cookies = sb.get_cookies()
-        auth_cookies = {cookie['name']: cookie['value'] for cookie in cookies}
+    with browser_lock:
+        if verbose: print("[INFO] Webshare: Acquired browser lock.")
         
-        if 'newDesignLoginToken' not in auth_cookies:
-            raise ValueError("Login succeeded, but could not find the necessary API token in cookies.")
+        main_window = sb.driver.current_window_handle
+        sb.open_new_tab()
+        new_tab = sb.driver.window_handles[-1]
+        sb.switch_to_window(new_tab)
+
+        try:
+            logged_in = False
+            if webshare_data and 'email' in webshare_data:
+                logged_in = _login(sb, webshare_data, verbose)
+
+            new_session_data = {}
+            if not logged_in:
+                new_session_data = _register(sb, verbose)
+            else:
+                new_session_data = webshare_data
+
+            if verbose: print("[INFO] Webshare: Extracting fresh authentication cookies...")
+            time.sleep(2)
+            cookies = sb.get_cookies()
+            auth_cookies = {cookie['name']: cookie['value'] for cookie in cookies}
             
-        new_session_data['cookies'] = auth_cookies
-        all_credentials['webshare'] = new_session_data
-        _save_credentials(all_credentials)
-        if verbose: print(f"[INFO] Webshare: Session for {new_session_data['email']} saved to {CREDENTIALS_FILE}.")
-        
-        return _try_direct_api_call(new_session_data, verbose) or []
+            if 'newDesignLoginToken' not in auth_cookies:
+                raise ValueError("Login succeeded, but could not find the necessary API token in cookies.")
+                
+            new_session_data['cookies'] = auth_cookies
+            all_credentials['webshare'] = new_session_data
+            _save_credentials(all_credentials)
+            if verbose: print(f"[INFO] Webshare: Session for {new_session_data['email']} saved.")
+            
+            return _try_direct_api_call(new_session_data, verbose) or []
 
-    except Exception as e:
-        print(f"[ERROR] Webshare scraper failed: {e}")
-        return []
+        except Exception as e:
+            print(f"[ERROR] Webshare scraper failed: {e}")
+            return []
+        finally:
+            if len(sb.driver.window_handles) > 1:
+                sb.switch_to_window(new_tab)
+                sb.driver.close()
+            sb.switch_to_window(main_window)
+            if verbose: print("[INFO] Webshare: Released browser lock.")

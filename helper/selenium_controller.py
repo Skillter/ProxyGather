@@ -1,4 +1,3 @@
-
 import logging
 import time
 from seleniumbase import BaseCase, SB
@@ -8,41 +7,45 @@ logging.basicConfig(
     level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s'
 )
 
-# =================================================================
-# REUSABLE HELPER FUNCTIONS
-# These functions contain the core logic and can be called from anywhere.
-# They accept the SeleniumBase instance (sb) as their main argument.
-# =================================================================
-
 def pass_cloudflare_challenge(sb: BaseCase) -> bool:
     """
-    Attempts to solve a Cloudflare Turnstile challenge on the current page.
-    This is now a standalone function.
+    Attempts to solve a Cloudflare Turnstile challenge using the focus-dependent
+    GUI-based method. This is the centralized solver function.
     
     Args:
         sb: The SeleniumBase BaseCase instance.
+    Returns:
+        True if the challenge was passed or not present, False otherwise.
     """
-    logging.info("Attempting to bypass Cloudflare challenge...")
+    logging.info("Attempting to bypass Cloudflare challenge (GUI method)...")
     try:
-        # Use the sb object passed into the function
-        sb.uc_gui_handle_captcha()
-    except Exception as e:
-        logging.error(f"An error occurred during uc_gui_handle_captcha: {e}")
-        sb.save_screenshot("captcha_fail_screenshot.png")
-        return False
+        # If the challenge isn't there to begin with, we succeed.
+        challenge_iframe = 'iframe[src*="challenges.cloudflare.com"]'
+        if not sb.is_element_visible(challenge_iframe, timeout=7):
+            logging.info("No Cloudflare challenge detected. Proceeding.")
+            return True
 
-    challenge_iframe = 'iframe[src*="challenges.cloudflare.com"]'
-    try:
-        sb.wait_for_element_not_visible(challenge_iframe, timeout=8)
-        logging.info("SUCCESS: Cloudflare challenge appears to be passed.")
-        logging.info(f"Landed on page: {sb.get_title()}")
-        sb.post_message("Cloudflare Challenge Bypassed!", duration=3)
+        # Bring the current browser window to the front to ensure it gets the click.
+        sb.bring_to_front()
+        time.sleep(0.2)  # Small delay to allow the OS to switch focus
+        
+        # Use the original, reliable GUI-based method
+        sb.uc_gui_handle_captcha()
+
+        # The best confirmation of success is the iframe disappearing.
+        sb.wait_for_element_not_visible(challenge_iframe, timeout=15)
+        
+        logging.info("Successfully solved Cloudflare challenge.")
         return True
-    except Exception:
-        logging.error("Failed to bypass Cloudflare challenge after click.")
-        logging.info(f"Landed on page: {sb.get_title()}")
-        sb.fail("Could not bypass the Cloudflare challenge.")
-        sb.save_screenshot("challenge_still_present.png")
+
+    except Exception as e:
+        # If an error occurred, do a final check. Maybe the challenge was already gone.
+        if not sb.is_element_present('iframe[src*="challenges.cloudflare.com"]'):
+            logging.info("Challenge was not present after error. Assuming success.")
+            return True
+        
+        logging.error(f"Failed to solve Cloudflare challenge with GUI method: {e}")
+        sb.save_screenshot("captcha_gui_fail.png")
         return False
 
 def run_cloudflare_bypass_on_demo_site(sb: BaseCase):
@@ -59,13 +62,10 @@ def run_cloudflare_bypass_on_demo_site(sb: BaseCase):
     logging.info("Navigating to test page...")
     sb.uc_open_with_reconnect("https://nopecha.com/demo/cloudflare", 3)
 
-    # Configure the messenger theme and post messages AFTER the page is loaded.
     sb.set_messenger_theme(theme="flat", location="top_center")
     sb.post_message("Page loaded. Attempting bypass...")
-
-    challenge_passed = pass_cloudflare_challenge(sb)
-
-    if challenge_passed:
+    
+    if pass_cloudflare_challenge(sb):
         logging.info(f"Successfully landed on page: {sb.get_title()}")
         sb.post_message("Cloudflare Challenge Bypassed!", duration=3)
     else:
@@ -75,22 +75,15 @@ def run_cloudflare_bypass_on_demo_site(sb: BaseCase):
     logging.info("Example finished. Browser will be open for 3 more seconds.")
     sb.sleep(3)
 
-
-
 def test_cloudflare_bypass_on_demo_site(self):
     """
     This is the main test method.
     It now simply calls our reusable helper function.
     """
-    # 'self' is the BaseCase instance when run via pytest
     run_cloudflare_bypass_on_demo_site(self)
 
-
-# This block allows the original file to still be run directly
 if __name__ == "__main__":
-    with SB(uc=True, headed=False, headless=True, disable_csp=True) as sb:
-        # The 'sb' object is a fully initialized BaseCase instance.
-        # Now you can pass it to your reusable function.
+    with SB(uc=True, headed=True, disable_csp=True) as sb:
         run_cloudflare_bypass_on_demo_site(sb)
     print("did the browser close now?")
     time.sleep(10)
