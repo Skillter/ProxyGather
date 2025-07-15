@@ -5,9 +5,10 @@ import argparse
 import re
 import shutil
 import subprocess
+import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Dict, Union, Tuple
-from seleniumbase import SB
+from seleniumbase import SB, BaseCase
 
 # Import scrapers
 from scrapers.proxy_scraper import scrape_proxies
@@ -23,7 +24,6 @@ from scrapers.proxyhttp_scraper import scrape_from_proxyhttp
 from automation_scrapers.openproxylist_scraper import scrape_from_openproxylist
 from automation_scrapers.webshare_scraper import scrape_from_webshare
 from automation_scrapers.hidemn_scraper import scrape_from_hidemn
-from helper.captcha_manager import CaptchaManager
 
 SITES_FILE = 'sites-to-get-proxies-from.txt'
 DEFAULT_OUTPUT_FILE = 'scraped-proxies.txt'
@@ -65,27 +65,14 @@ def parse_sites_file(filename: str) -> List[Tuple[str, Union[Dict, None], Union[
             scrape_targets.append((url, payload, headers))
     return scrape_targets
 
-def run_automation_scrapers(sb, special_tasks, results):
-    """Helper function to run sequential automation tasks within a browser context."""
-    for name, func in special_tasks.items():
-        try:
-            print(f"[RUNNING] Automation scraper '{name}'...")
-            proxies = func(sb)
-            results[name] = proxies
-            print(f"[COMPLETED] '{name}' finished, found {len(proxies)} proxies.")
-        except Exception as e:
-            results[name] = []
-            print(f"[ERROR] Automation scraper '{name}' failed: {e}")
-
 def main():
     parser = argparse.ArgumentParser(description="A powerful, multi-source proxy scraper.")
     parser.add_argument('--output', default=DEFAULT_OUTPUT_FILE, help=f"The output file for scraped proxies. Defaults to '{DEFAULT_OUTPUT_FILE}'.")
     parser.add_argument('--threads', type=int, default=50, help="Number of threads for scrapers. Default: 50")
+    parser.add_argument('--automation-threads', type=int, default=3, help="Max concurrent automation scrapers. Default: 3")
     parser.add_argument('--remove-dead-links', action='store_true', help="Removes URLs from the sites file that return no proxies.")
     parser.add_argument('-v', '--verbose', action='store_true', help="Enable detailed logging for each scraper.")
     
-    parser.add_argument('--automation-threads', type=int, default=3, help="Max concurrent automation scrapers. Default: 3")
-
     group = parser.add_mutually_exclusive_group()
     group.add_argument('--only', nargs='*', help="Only run the specified scrapers (case-insensitive). Pass with no values to see choices.")
     group.add_argument('--exclude', '--except', nargs='*', help="Exclude scrapers from the run (case-insensitive). Pass with no values to see choices.")
@@ -101,9 +88,9 @@ def main():
         'XSEO': lambda: scrape_from_xseo(verbose=args.verbose),
         'GoLogin': lambda: scrape_from_gologin_api(verbose=args.verbose),
         'ProxyHttp': lambda: scrape_from_proxyhttp(verbose=args.verbose),
-        'OpenProxyList': lambda sb, tab, cm: scrape_from_openproxylist(sb, tab, cm, verbose=args.verbose),
-        'Webshare': lambda sb, tab, cm: scrape_from_webshare(sb, tab, cm, verbose=args.verbose),
-        'Hide.mn': lambda sb, tab, cm: scrape_from_hidemn(sb, tab, cm, verbose=args.verbose),
+        'OpenProxyList': lambda sb, lock: scrape_from_openproxylist(sb, lock, verbose=args.verbose),
+        'Webshare': lambda sb, lock: scrape_from_webshare(sb, lock, verbose=args.verbose),
+        'Hide.mn': lambda sb, lock: scrape_from_hidemn(sb, lock, verbose=args.verbose),
     }
     
     AUTOMATION_SCRAPER_NAMES  = [
@@ -120,11 +107,11 @@ def main():
         print(f"  {general_scraper_name} - The websites from {SITES_FILE} that do not require extra logic to scrape")
         print("Dedicated scrapers with implemented logic (Recommended):")
         for name in all_scraper_names:
-            if (name == general_scraper_name) or (name in SPECIAL_CASE_SCRAPER_NAMES): 
+            if (name == general_scraper_name) or (name in AUTOMATION_SCRAPER_NAMES): 
                 continue
             print(f"  {name}")
         print("Dedicated automation scrapers that are heavier to run:")
-        for name in SPECIAL_CASE_SCRAPER_NAMES:
+        for name in AUTOMATION_SCRAPER_NAMES:
             print(f"  {name}")
         sys.exit(0)
 
@@ -167,10 +154,10 @@ def main():
     results = {}
     successful_general_urls = []
     
-    special_tasks = {name: func for name, func in tasks_to_run.items() if name in SPECIAL_CASE_SCRAPER_NAMES}
-    normal_tasks = {name: func for name, func in tasks_to_run.items() if name not in SPECIAL_CASE_SCRAPER_NAMES}
+    automation_tasks = {name: func for name, func in tasks_to_run.items() if name in AUTOMATION_SCRAPER_NAMES}
+    normal_tasks = {name: func for name, func in tasks_to_run.items() if name not in AUTOMATION_SCRAPER_NAMES}
 
-    if special_tasks and sys.platform == "linux":
+    if automation_tasks and sys.platform == "linux":
         if not os.environ.get('DISPLAY'):
             print("[INFO] Linux/WSL detected. Checking for virtual display wrapper (xvfb-run)...")
             if shutil.which("xvfb-run"):
@@ -182,54 +169,61 @@ def main():
             else:
                 print("\n[ERROR] xvfb-run is not installed. This is required for automation on headless Linux/WSL.")
                 print("[INFO] Please install it using: sudo apt-get update && sudo apt-get install -y xvfb")
-                for name in special_tasks.keys():
+                for name in automation_tasks.keys():
                     results[name] = []
-                special_tasks = {}
+                automation_tasks = {}
 
-    captcha_manager = CaptchaManager()
+    browser_lock = threading.Lock()
     
-    with ThreadPoolExecutor(max_workers=args.threads, thread_name_prefix='NormalScraper') as normal_executor:
+    with ThreadPoolExecutor(max_workers=args.threads, thread_name_prefix='NormalScraper') as executor:
         future_to_scraper = {}
         
         if normal_tasks:
-            print(f"--- Submitting {len(normal_tasks)} normal scraper(s) to a pool of {args.threads} threads ---")
+            print(f"--- Submitting {len(normal_tasks)} normal scraper(s)...")
             for name, func in normal_tasks.items():
-                future = normal_executor.submit(func)
+                future = executor.submit(func)
                 future_to_scraper[future] = name
 
-        if special_tasks:
-            print(f"\n--- Initializing single browser for {len(special_tasks)} concurrent automation scraper(s) ---")
+        if automation_tasks:
+            print(f"\n--- Initializing single browser for {len(automation_tasks)} concurrent automation scraper(s) ---")
             with SB(uc=True, headed=True, disable_csp=True) as sb:
-                # Use a separate executor for the browser tasks
-                with ThreadPoolExecutor(max_workers=args.automation_threads, thread_name_prefix='AutomationScraper') as automation_executor:
-                    # Open a blank starting tab to keep tab 0 clean
-                    sb.open("about:blank")
-                    
-                    for name, func in special_tasks.items():
-                        # Create a new tab for each scraper before submitting the job
-                        sb.open_new_tab()
-                        tab_handle = sb.get_current_window_handle()
-                        
-                        # Submit the job with the shared sb, its new tab, and the captcha manager
-                        future = automation_executor.submit(func, sb, tab_handle, captcha_manager)
-                        future_to_scraper[future] = name
-
-        print("\n--- Waiting for all scrapers to complete... ---")
-        for future in as_completed(future_to_scraper):
-            name = future_to_scraper[future]
-            try:
-                result_data = future.result()
-                if name.startswith('Websites'):
-                    proxies_found, urls = result_data
-                    results[name] = proxies_found
-                    successful_general_urls.extend(urls)
-                else:
-                    results[name] = result_data
+                for name, func in automation_tasks.items():
+                    future = executor.submit(func, sb, browser_lock)
+                    future_to_scraper[future] = name
                 
-                print(f"[COMPLETED] '{name}' finished, found {len(results.get(name, []))} proxies.")
-            except Exception as e:
-                results[name] = []
-                print(f"[ERROR] Scraper '{name}' failed: {e}")
+                print("\n--- Waiting for all scrapers to complete... ---")
+                for future in as_completed(future_to_scraper):
+                    name = future_to_scraper.get(future, "Unknown")
+                    try:
+                        result_data = future.result()
+                        if name in normal_tasks or name in automation_tasks:
+                            if name.startswith('Websites'):
+                                proxies_found, urls = result_data
+                                results[name] = proxies_found
+                                successful_general_urls.extend(urls)
+                            else:
+                                results[name] = result_data
+                            print(f"[COMPLETED] '{name}' finished, found {len(results.get(name, []))} proxies.")
+                    except Exception as e:
+                        results[name] = []
+                        print(f"[ERROR] Scraper '{name}' failed: {e}")
+        else:
+            # If there are no automation tasks, we still need to wait for normal ones
+            print("\n--- Waiting for all scrapers to complete... ---")
+            for future in as_completed(future_to_scraper):
+                name = future_to_scraper.get(future, "Unknown")
+                try:
+                    result_data = future.result()
+                    if name.startswith('Websites'):
+                        proxies_found, urls = result_data
+                        results[name] = proxies_found
+                        successful_general_urls.extend(urls)
+                    else:
+                        results[name] = result_data
+                    print(f"[COMPLETED] '{name}' finished, found {len(results.get(name, []))} proxies.")
+                except Exception as e:
+                    results[name] = []
+                    print(f"[ERROR] Scraper '{name}' failed: {e}")
 
 
     print("\n--- Combining and processing all results ---")
