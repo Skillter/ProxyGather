@@ -193,11 +193,13 @@ def scrape_from_webshare(sb: BaseCase, browser_lock: threading.Lock, verbose: bo
             return _try_direct_api_call(new_session_data, verbose) or []
 
         except Exception as e:
-            print(f"[ERROR] Webshare scraper failed: {e}")
+            if verbose:
+                print(f"[ERROR] Webshare scraper failed: {e}")
             return []
         finally:
-            if len(sb.driver.window_handles) > 1:
+            if new_tab in sb.driver.window_handles and len(sb.driver.window_handles) > 1:
                 sb.switch_to_window(new_tab)
                 sb.driver.close()
-            sb.switch_to_window(main_window)
+            if main_window in sb.driver.window_handles:
+                sb.switch_to_window(main_window)
             if verbose: print("[INFO] Webshare: Released browser lock.")
