@@ -5,12 +5,10 @@ import argparse
 import re
 import shutil
 import subprocess
-import threading
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
 from typing import List, Dict, Union, Tuple
-from seleniumbase import SB, BaseCase
+from seleniumbase import SB
 
-# Import scrapers
 from scrapers.proxy_scraper import scrape_proxies
 from scrapers.proxyscrape_api_fetcher import fetch_from_api
 from scrapers.proxydb_scraper import scrape_all_from_proxydb
@@ -65,11 +63,19 @@ def parse_sites_file(filename: str) -> List[Tuple[str, Union[Dict, None], Union[
             scrape_targets.append((url, payload, headers))
     return scrape_targets
 
+def run_automation_task(scraper_name: str, scraper_func, verbose_flag: bool, is_headful: bool):
+    """
+    A wrapper to run a single automation scraper in its own browser instance,
+    with configurable headful/headless mode.
+    """
+    with SB(uc=True, headed=is_headful, headless2=(not is_headful), disable_csp=True) as sb:
+        return scraper_func(sb, verbose=verbose_flag)
+
 def main():
     parser = argparse.ArgumentParser(description="A powerful, multi-source proxy scraper.")
     parser.add_argument('--output', default=DEFAULT_OUTPUT_FILE, help=f"The output file for scraped proxies. Defaults to '{DEFAULT_OUTPUT_FILE}'.")
-    parser.add_argument('--threads', type=int, default=50, help="Number of threads for scrapers. Default: 50")
-    parser.add_argument('--automation-threads', type=int, default=3, help="Max concurrent automation scrapers. Default: 3")
+    parser.add_argument('--threads', type=int, default=50, help="Number of threads for regular web scrapers. Default: 50")
+    parser.add_argument('--automation-threads', type=int, default=3, help="Max concurrent headless browser automation scrapers (processes). Default: 3")
     parser.add_argument('--remove-dead-links', action='store_true', help="Removes URLs from the sites file that return no proxies.")
     parser.add_argument('-v', '--verbose', action='store_true', help="Enable detailed logging for each scraper.")
     
@@ -80,62 +86,44 @@ def main():
     args = parser.parse_args()
 
     all_scraper_tasks = {
-        'ProxyScrape': lambda: fetch_from_api(verbose=args.verbose),
-        'ProxyDB': lambda: scrape_all_from_proxydb(verbose=args.verbose),
-        'Geonode': lambda: scrape_from_geonode_api(verbose=args.verbose),
-        'CheckerProxy': lambda: scrape_checkerproxy_archive(verbose=args.verbose),
-        'ProxyList.org': lambda: scrape_from_proxylistorg(verbose=args.verbose),
-        'XSEO': lambda: scrape_from_xseo(verbose=args.verbose),
-        'GoLogin': lambda: scrape_from_gologin_api(verbose=args.verbose),
-        'ProxyHttp': lambda: scrape_from_proxyhttp(verbose=args.verbose),
-        'OpenProxyList': lambda sb, lock: scrape_from_openproxylist(sb, lock, verbose=args.verbose),
-        'Webshare': lambda sb, lock: scrape_from_webshare(sb, lock, verbose=args.verbose),
-        'Hide.mn': lambda sb, lock: scrape_from_hidemn(sb, lock, verbose=args.verbose),
+        'ProxyScrape': fetch_from_api,
+        'ProxyDB': scrape_all_from_proxydb,
+        'Geonode': scrape_from_geonode_api,
+        'CheckerProxy': scrape_checkerproxy_archive,
+        'ProxyList.org': scrape_from_proxylistorg,
+        'XSEO': scrape_from_xseo,
+        'GoLogin': scrape_from_gologin_api,
+        'ProxyHttp': scrape_from_proxyhttp,
+        'Spys.one': scrape_from_spysone,
+        'OpenProxyList': scrape_from_openproxylist,
+        'Webshare': scrape_from_webshare,
+        'Hide.mn': scrape_from_hidemn,
     }
     
-    AUTOMATION_SCRAPER_NAMES  = [
-        'OpenProxyList', 
-        'Webshare', 
-        'Hide.mn',
-    ]
-
-    general_scraper_name = f'Websites'
+    AUTOMATION_SCRAPER_NAMES = ['OpenProxyList', 'Webshare', 'Hide.mn', 'Spys.one']
+    HEADFUL_SCRAPERS = ['Hide.mn', 'Webshare']
+    general_scraper_name = 'Websites'
     all_scraper_names = sorted(list(all_scraper_tasks.keys()) + [general_scraper_name])
 
     if (args.only is not None and not args.only) or (args.exclude is not None and not args.exclude):
         print("Available scraper sources are:")
-        print(f"  {general_scraper_name} - The websites from {SITES_FILE} that do not require extra logic to scrape")
-        print("Dedicated scrapers with implemented logic (Recommended):")
+        print(f"  {general_scraper_name} - Websites from {SITES_FILE}")
         for name in all_scraper_names:
-            if (name == general_scraper_name) or (name in AUTOMATION_SCRAPER_NAMES): 
-                continue
-            print(f"  {name}")
-        print("Dedicated automation scrapers that are heavier to run:")
-        for name in AUTOMATION_SCRAPER_NAMES:
-            print(f"  {name}")
+            if name != general_scraper_name:
+                print(f"  {name}")
         sys.exit(0)
 
     tasks_to_run = all_scraper_tasks.copy()
     try:
         scrape_targets = parse_sites_file(SITES_FILE)
         if scrape_targets:
-            def general_scraper_task():
-                return scrape_proxies(scrape_targets, verbose=args.verbose, max_workers=args.threads)
-            tasks_to_run[general_scraper_name] = general_scraper_task
+            tasks_to_run[general_scraper_name] = lambda verbose: scrape_proxies(scrape_targets, verbose=verbose, max_workers=args.threads)
     except FileNotFoundError:
-        print(f"[WARN] The URL file '{SITES_FILE}' was not found. The '{general_scraper_name}' scraper will not be available.")
+        print(f"[WARN] '{SITES_FILE}' not found. '{general_scraper_name}' scraper is unavailable.")
 
     scraper_name_map = {name.lower(): name for name in list(tasks_to_run.keys())}
-
     def resolve_user_input(user_list):
-        resolved_names = set()
-        for name in user_list:
-            lower_name = name.lower()
-            if lower_name in scraper_name_map:
-                resolved_names.add(scraper_name_map[lower_name])
-            else:
-                print(f"[WARN] Unknown scraper source '{name}' will be ignored.")
-        return resolved_names
+        return {scraper_name_map[name.lower()] for name in user_list if name.lower() in scraper_name_map}
 
     if args.only:
         sources_to_run = resolve_user_input(args.only)
@@ -143,13 +131,24 @@ def main():
         print(f"--- Running ONLY the following scrapers: {', '.join(tasks_to_run.keys())} ---")
     elif args.exclude:
         sources_to_exclude = resolve_user_input(args.exclude)
-        for name in sources_to_exclude:
-            tasks_to_run.pop(name, None)
+        tasks_to_run = {name: func for name, func in tasks_to_run.items() if name not in sources_to_exclude}
         print(f"--- EXCLUDING the following scrapers: {', '.join(sources_to_exclude)} ---")
 
     if not tasks_to_run:
         print("[ERROR] No scrapers selected to run. Exiting.")
         sys.exit(1)
+
+    if sys.platform == "linux" and not os.environ.get('DISPLAY'):
+        print("[INFO] Linux/WSL detected. Checking for xvfb-run...")
+        if shutil.which("xvfb-run"):
+            print("[INFO] xvfb-run found. Re-launching inside a virtual display...")
+            command = [shutil.which("xvfb-run"), '--auto-servernum', sys.executable, *sys.argv]
+            subprocess.run(command)
+            sys.exit(0)
+        else:
+            print("\n[ERROR] xvfb-run is required for browser automation on headless Linux/WSL but is not installed.")
+            print("Please install it: sudo apt-get update && sudo apt-get install -y xvfb")
+            sys.exit(1)
 
     results = {}
     successful_general_urls = []
@@ -157,64 +156,50 @@ def main():
     automation_tasks = {name: func for name, func in tasks_to_run.items() if name in AUTOMATION_SCRAPER_NAMES}
     normal_tasks = {name: func for name, func in tasks_to_run.items() if name not in AUTOMATION_SCRAPER_NAMES}
 
-    if automation_tasks and sys.platform == "linux":
-        if not os.environ.get('DISPLAY'):
-            print("[INFO] Linux/WSL detected. Checking for virtual display wrapper (xvfb-run)...")
-            if shutil.which("xvfb-run"):
-                print("[INFO] xvfb-run found. Re-launching script inside a virtual display...")
-                module_name = os.path.basename(sys.argv[0]).replace('.py', '')
-                command = [shutil.which("xvfb-run"), '--auto-servernum', sys.executable, '-m', module_name] + sys.argv[1:]
-                subprocess.run(command)
-                sys.exit(0)
-            else:
-                print("\n[ERROR] xvfb-run is not installed. This is required for automation on headless Linux/WSL.")
-                print("[INFO] Please install it using: sudo apt-get update && sudo apt-get install -y xvfb")
-                for name in automation_tasks.keys():
-                    results[name] = []
-                automation_tasks = {}
+    headful_automation_tasks = {name: func for name, func in automation_tasks.items() if name in HEADFUL_SCRAPERS}
+    headless_automation_tasks = {name: func for name, func in automation_tasks.items() if name not in HEADFUL_SCRAPERS}
 
-    browser_lock = threading.Lock()
-    
-    with ThreadPoolExecutor(max_workers=args.threads, thread_name_prefix='NormalScraper') as executor:
-        future_to_scraper = {}
-        
-        if normal_tasks:
-            print(f"--- Submitting {len(normal_tasks)} normal scraper(s)...")
-            for name, func in normal_tasks.items():
-                future = executor.submit(func)
-                future_to_scraper[future] = name
+    all_futures = []
+    future_to_scraper = {}
 
-        if automation_tasks:
-            print(f"\n--- Initializing single browser for {len(automation_tasks)} concurrent automation scraper(s) ---")
-            with SB(uc=True, headed=True, disable_csp=True) as sb:
-                for name, func in automation_tasks.items():
-                    future = executor.submit(func, sb, browser_lock)
-                    future_to_scraper[future] = name
-                
-                print("\n--- Waiting for all scrapers to complete... ---")
-                for future in as_completed(future_to_scraper):
-                    name = future_to_scraper.get(future, "Unknown")
-                    try:
-                        result_data = future.result()
-                        if name in normal_tasks or name in automation_tasks:
-                            if name.startswith('Websites'):
-                                proxies_found, urls = result_data
-                                results[name] = proxies_found
-                                successful_general_urls.extend(urls)
-                            else:
-                                results[name] = result_data
-                            print(f"[COMPLETED] '{name}' finished, found {len(results.get(name, []))} proxies.")
-                    except Exception as e:
-                        results[name] = []
-                        print(f"[ERROR] Scraper '{name}' failed: {e}")
-        else:
-            # If there are no automation tasks, we still need to wait for normal ones
+    # Use a list of executors to manage them easily
+    executors = []
+
+    if normal_tasks:
+        print(f"--- Submitting {len(normal_tasks)} regular scraper(s) using a ThreadPool...")
+        executor = ThreadPoolExecutor(max_workers=args.threads, thread_name_prefix='NormalScraper')
+        executors.append(executor)
+        for name, func in normal_tasks.items():
+            future = executor.submit(func, args.verbose)
+            future_to_scraper[future] = name
+            all_futures.append(future)
+
+    if headless_automation_tasks:
+        print(f"--- Submitting {len(headless_automation_tasks)} headless automation scraper(s) using a ProcessPool...")
+        executor = ProcessPoolExecutor(max_workers=args.automation_threads)
+        executors.append(executor)
+        for name, func in headless_automation_tasks.items():
+            future = executor.submit(run_automation_task, name, func, args.verbose, is_headful=False)
+            future_to_scraper[future] = name
+            all_futures.append(future)
+
+    if headful_automation_tasks:
+        print(f"--- Submitting {len(headful_automation_tasks)} headful automation scraper(s) sequentially using a ProcessPool (1 worker)...")
+        executor = ProcessPoolExecutor(max_workers=1)
+        executors.append(executor)
+        for name, func in headful_automation_tasks.items():
+            future = executor.submit(run_automation_task, name, func, args.verbose, is_headful=True)
+            future_to_scraper[future] = name
+            all_futures.append(future)
+
+    try:
+        if all_futures:
             print("\n--- Waiting for all scrapers to complete... ---")
-            for future in as_completed(future_to_scraper):
+            for future in as_completed(all_futures):
                 name = future_to_scraper.get(future, "Unknown")
                 try:
                     result_data = future.result()
-                    if name.startswith('Websites'):
+                    if name == general_scraper_name:
                         proxies_found, urls = result_data
                         results[name] = proxies_found
                         successful_general_urls.extend(urls)
@@ -224,45 +209,38 @@ def main():
                 except Exception as e:
                     results[name] = []
                     print(f"[ERROR] Scraper '{name}' failed: {e}")
-
+    finally:
+        for executor in executors:
+            executor.shutdown(wait=True)
 
     print("\n--- Combining and processing all results ---")
-    combined_proxies = []
-    for proxy_list in results.values():
-        if proxy_list: combined_proxies.extend(proxy_list)
-        
-    unique_proxies_before_filter = set(p for p in combined_proxies if p and p.strip())
+    combined_proxies = {p for proxy_list in results.values() if proxy_list for p in proxy_list if p and p.strip()}
+    final_proxies = sorted(list({p for p in combined_proxies if not INVALID_IP_REGEX.match(p)}))
     
-    final_proxies = {p for p in unique_proxies_before_filter if not INVALID_IP_REGEX.match(p)}
-    
-    spam_count = len(unique_proxies_before_filter) - len(final_proxies)
+    spam_count = len(combined_proxies) - len(final_proxies)
     if spam_count > 0:
         print(f"[INFO] Removed {spam_count} spam/invalid proxies from reserved IP ranges.")
         
-    sorted_final_proxies = sorted(list(final_proxies))
-    
     print("\n--- Summary ---")
     for name in sorted(results.keys()): print(f"Found {len(results.get(name, []))} proxies from {name}.")
-    print(f"\nTotal unique & valid proxies: {len(sorted_final_proxies)}")
+    print(f"\nTotal unique & valid proxies: {len(final_proxies)}")
 
-    if sorted_final_proxies:
-        save_proxies_to_file(sorted_final_proxies, args.output)
+    if final_proxies:
+        save_proxies_to_file(final_proxies, args.output)
     else:
         print("\nCould not find any proxies from any source.")
 
-    if args.remove_dead_links:
-        print(f"\n[INFO] --remove-dead-links is active. Updating '{SITES_FILE}'...")
+    if args.remove_dead_links and successful_general_urls:
+        print(f"\n[INFO] Updating '{SITES_FILE}' to remove dead links...")
         try:
             lines_to_keep = []
             with open(SITES_FILE, 'r', encoding='utf-8') as f:
                 for line in f:
                     stripped_line = line.strip()
-                    if not stripped_line or stripped_line.startswith('#'):
+                    if not stripped_line or stripped_line.startswith('#') or stripped_line.split('|')[0].strip() in successful_general_urls:
                         lines_to_keep.append(line)
-                        continue
-                    url_part = stripped_line.split('|')[0].strip()
-                    if url_part in successful_general_urls: lines_to_keep.append(line)
-            with open(SITES_FILE, 'w', encoding='utf-8') as f: f.writelines(lines_to_keep)
+            with open(SITES_FILE, 'w', encoding='utf-8') as f:
+                f.writelines(lines_to_keep)
             print(f"[SUCCESS] Successfully updated '{SITES_FILE}'.")
         except Exception as e:
             print(f"[ERROR] Failed to update '{SITES_FILE}': {e}")
