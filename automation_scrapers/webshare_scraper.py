@@ -1,6 +1,5 @@
 import time
 import requests
-import threading
 from typing import List, Dict, Optional
 import random
 import string
@@ -8,6 +7,7 @@ import json
 import os
 from seleniumbase import BaseCase
 from selenium.webdriver.support.ui import WebDriverWait
+from selenium.common.exceptions import NoSuchWindowException, NoSuchElementException
 
 LOGIN_URL = "https://dashboard.webshare.io/login"
 REGISTER_URL = "https://dashboard.webshare.io/register/?source=nav_register"
@@ -58,7 +58,7 @@ def _save_credentials(creds: Dict):
         with open(CREDENTIALS_FILE, 'w') as f:
             json.dump(creds, f, indent=4)
     except IOError as e:
-        print(f"[ERROR] Could not save credentials to '{CREDENTIALS_FILE}': {e}")
+        print(f"\n[ERROR] Could not save credentials to '{CREDENTIALS_FILE}': {e}")
 
 def _try_direct_api_call(creds: Dict, verbose: bool) -> Optional[List[str]]:
     if verbose: print("[INFO] Webshare: Found saved session. Attempting direct API call...")
@@ -131,12 +131,51 @@ def _register(sb: BaseCase, verbose: bool) -> Dict:
     sb.type("input[data-testid=password-input]", password)
     sb.click("button[data-testid=signup-button]")
 
-    print("\n" + "="*70 + "\nACTION REQUIRED: Please solve the CAPTCHA in the Webshare tab.\n" + "="*70 + "\n")
+    # time.sleep(2)  # Allow time for captcha to potentially load
     
-    sb.wait_for_element('button:contains("Let\'s Get Started")', timeout=120)
-    if verbose: print("[INFO] Webshare: 'Let\'s Get Started' button found. Clicking...")
-    time.sleep(2)
+    # Google reCAPTCHA detection selectors
+    recaptcha_challenge_iframe = 'iframe[src*="google.com/recaptcha/api2/bframe"]'
+    recaptcha_anchor_iframe = 'iframe[src*="google.com/recaptcha/api2/anchor"]'
+    recaptcha_badge = '.grecaptcha-badge'
+
+    # wait for recaptcha
+    try: 
+        sb.wait_for_element_visible(recaptcha_challenge_iframe, timeout=10)
+    except Exception as e: 
+        print(e)
+    
+    try:
+        if sb.is_element_visible(recaptcha_challenge_iframe):
+            if verbose: print("[INFO] Webshare: Google reCAPTCHA challenge detected and visible.")
+            try:
+                # Wait for the challenge to disappear (indicating success)
+                sb.wait_for_element_not_visible(recaptcha_challenge_iframe, timeout=120)
+                if verbose: print("[INFO] Webshare: reCAPTCHA challenge disappeared.")
+            except Exception as e:
+                if verbose: print(f"[WARN] Webshare: reCAPTCHA challenge never disappeared: {e}")
+        
+        elif sb.is_element_present(recaptcha_badge) or sb.is_element_present(recaptcha_anchor_iframe):
+            if verbose: print("[INFO] Webshare: reCAPTCHA detected but no challenge shown yet.")
+        
+        else:
+            if verbose: print("[INFO] Webshare: No reCAPTCHA detected on the page.")
+            
+    except Exception as e:
+        if verbose: print(f"[ERROR] Webshare: Error during reCAPTCHA detection: {e}")
+        
+        
+    getstarted_button = 'button:contains("Let\'s Get Started")'
+    sb.wait_for_element_clickable(getstarted_button, timeout=10)
+    if sb.wait_for_element_clickable(getstarted_button):
+        if verbose: print("[INFO] Webshare: 'Let's Get Started' button found and it's clickable.")
+    elif sb.wait_for_element(getstarted_button):
+        if verbose: print("[INFO] Webshare: 'Let's Get Started' button found but it's not clickable.")
+    elif sb.wait_for_element_present(getstarted_button):
+        if verbose: print("[INFO] Webshare: 'Let's Get Started' button found but it's not visible.")
+    else:
+        if verbose: print("[INFO] Webshare: 'Let's Get Started' button not found.")
     sb.click('button:contains("Let\'s Get Started")')
+
     
     wait = WebDriverWait(sb.driver, 25)
     wait.until(lambda driver: '/proxy/list' in driver.current_url)
@@ -147,7 +186,10 @@ def _register(sb: BaseCase, verbose: bool) -> Dict:
     if verbose: print("[SUCCESS] Webshare: Registration and onboarding complete.")
     return {'email': email, 'password': password}
 
-def scrape_from_webshare(sb: BaseCase, browser_lock: threading.Lock, verbose: bool = True) -> List[str]:
+def scrape_from_webshare(sb: BaseCase, verbose: bool = True) -> List[str]:
+    """
+    Scrapes Webshare using its own dedicated browser instance.
+    """
     if verbose: print("[RUNNING] 'Webshare.io' automation scraper has started.")
     
     all_credentials = _load_credentials()
@@ -158,48 +200,41 @@ def scrape_from_webshare(sb: BaseCase, browser_lock: threading.Lock, verbose: bo
         if proxies is not None:
             return proxies
     
-    with browser_lock:
-        if verbose: print("[INFO] Webshare: Acquired browser lock.")
+    try:
+        logged_in = False
+        if webshare_data and 'email' in webshare_data:
+            logged_in = _login(sb, webshare_data, verbose)
+
+        new_session_data = {}
+        if not logged_in:
+            new_session_data = _register(sb, verbose)
+        else:
+            new_session_data = webshare_data
+
+        # Check if browser is still active before proceeding
+        if not sb.driver.window_handles:
+             raise NoSuchWindowException("Browser window was closed during login/registration.")
+
+        if verbose: print("[INFO] Webshare: Extracting fresh authentication cookies...")
+        time.sleep(2)
+        cookies = sb.get_cookies()
+        auth_cookies = {cookie['name']: cookie['value'] for cookie in cookies}
         
-        main_window = sb.driver.current_window_handle
-        sb.open_new_tab()
-        new_tab = sb.driver.window_handles[-1]
-        sb.switch_to_window(new_tab)
-
-        try:
-            logged_in = False
-            if webshare_data and 'email' in webshare_data:
-                logged_in = _login(sb, webshare_data, verbose)
-
-            new_session_data = {}
-            if not logged_in:
-                new_session_data = _register(sb, verbose)
-            else:
-                new_session_data = webshare_data
-
-            if verbose: print("[INFO] Webshare: Extracting fresh authentication cookies...")
-            time.sleep(2)
-            cookies = sb.get_cookies()
-            auth_cookies = {cookie['name']: cookie['value'] for cookie in cookies}
+        if 'newDesignLoginToken' not in auth_cookies:
+            raise ValueError("Login succeeded, but could not find the necessary API token in cookies.")
             
-            if 'newDesignLoginToken' not in auth_cookies:
-                raise ValueError("Login succeeded, but could not find the necessary API token in cookies.")
-                
-            new_session_data['cookies'] = auth_cookies
-            all_credentials['webshare'] = new_session_data
-            _save_credentials(all_credentials)
-            if verbose: print(f"[INFO] Webshare: Session for {new_session_data['email']} saved.")
-            
-            return _try_direct_api_call(new_session_data, verbose) or []
+        new_session_data['cookies'] = auth_cookies
+        all_credentials['webshare'] = new_session_data
+        _save_credentials(all_credentials)
+        if verbose: print(f"[INFO] Webshare: Session for {new_session_data['email']} saved.")
+        
+        return _try_direct_api_call(new_session_data, verbose) or []
 
-        except Exception as e:
-            if verbose:
-                print(f"[ERROR] Webshare scraper failed: {e}")
-            return []
-        finally:
-            if new_tab in sb.driver.window_handles and len(sb.driver.window_handles) > 1:
-                sb.switch_to_window(new_tab)
-                sb.driver.close()
-            if main_window in sb.driver.window_handles:
-                sb.switch_to_window(main_window)
-            if verbose: print("[INFO] Webshare: Released browser lock.")
+    except NoSuchWindowException:
+        if verbose:
+            print(f"[ERROR] Webshare scraper failed because the browser window was closed unexpectedly.")
+        return []
+    except Exception as e:
+        if verbose:
+            print(f"[ERROR] Webshare scraper failed: {e}")
+        return []

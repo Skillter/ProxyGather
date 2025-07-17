@@ -1,5 +1,4 @@
 import time
-import threading
 from typing import List
 from seleniumbase import BaseCase
 
@@ -8,79 +7,297 @@ from scrapers.proxy_scraper import extract_proxies_from_content
 URL_TEMPLATE = "https://hide.mn/en/proxy-list/?start={offset}"
 DELAY_SECONDS = 1.5
 
-def scrape_from_hidemn(sb: BaseCase, browser_lock: threading.Lock, verbose: bool = True) -> List[str]:
+def is_turnstile_challenge_present(sb: BaseCase, timeout: int = 5) -> bool:
     """
-    Scrapes hide.mn by acquiring a lock on the shared browser instance,
-    performing all actions in its own tab, and then releasing the lock.
+    Comprehensive detection of Cloudflare Turnstile challenges.
+    Checks multiple indicators including iframes, scripts, DOM elements, and JS variables.
+    """
+    
+    # Wait for the page to stabilize (better than sleep)
+    sb.wait_for_ready_state_complete()
+    
+    # List of selectors to check
+    turnstile_selectors = [
+        # Direct Turnstile elements
+        'iframe[src*="challenges.cloudflare.com"]',
+        'iframe[src*="turnstile"]',
+        'div.cf-turnstile',
+        'div[class*="cf-turnstile"]',
+        'div[id*="cf-turnstile"]',
+        
+        # Challenge containers
+        'div[class*="challenge-container"]',
+        'div[class*="challenge-wrapper"]',
+        
+        # Turnstile widget containers
+        'div[data-turnstile-widget]',
+        'div[data-cf-turnstile]',
+        
+        # Shadow DOM host elements
+        'cf-turnstile',
+        'cloudflare-app',
+    ]
+    
+    # Check for any of the selectors
+    for selector in turnstile_selectors:
+        try:
+            if sb.is_element_present(selector, timeout=0.5):
+                return True
+        except:
+            continue
+    
+    # Check for Turnstile scripts in the page
+    try:
+        scripts_present = sb.execute_script("""
+            const scripts = Array.from(document.scripts);
+            return scripts.some(script => {
+                const src = script.src || '';
+                const content = script.textContent || '';
+                return src.includes('turnstile') || 
+                       src.includes('challenges.cloudflare.com') ||
+                       content.includes('turnstile') ||
+                       content.includes('cf-challenge');
+            });
+        """)
+        if scripts_present:
+            return True
+    except:
+        pass
+    
+    # Check for Turnstile-related global JavaScript variables
+    try:
+        js_vars_present = sb.execute_script("""
+            return (
+                typeof window.turnstile !== 'undefined' ||
+                typeof window.cf !== 'undefined' ||
+                typeof window.cfTurnstile !== 'undefined' ||
+                typeof window.__CF !== 'undefined' ||
+                typeof window.__cfRLUnblockHandlers !== 'undefined'
+            );
+        """)
+        if js_vars_present:
+            return True
+    except:
+        pass
+    
+    # Check for challenge-related text (multiple languages)
+    challenge_texts = [
+        "Verifying you are human",
+        "Checking your browser",
+        "Just a moment",
+        "One more step",
+        "Please wait",
+        "Verify you are human",
+        "Security check",
+        "Verificando que eres humano",  # Spanish
+        "Vérification que vous êtes humain",  # French
+        "Überprüfung, ob Sie ein Mensch sind",  # German
+    ]
+    
+    for text in challenge_texts:
+        try:
+            if sb.is_text_visible(text, timeout=0.5):
+                # Additional check: ensure it's not just random page content
+                page_title = sb.get_title().lower()
+                if any(keyword in page_title for keyword in ['cloudflare', 'attention', 'just a moment']):
+                    return True
+                # Check if the text is in a challenge-like container
+                if sb.is_element_present('div[class*="challenge"]', timeout=0.5):
+                    return True
+        except:
+            continue
+    
+    # Check for Turnstile in shadow DOM
+    try:
+        shadow_check = sb.execute_script("""
+            function checkShadowDOM(element) {
+                if (element.shadowRoot) {
+                    const shadowContent = element.shadowRoot.innerHTML;
+                    if (shadowContent.includes('turnstile') || 
+                        shadowContent.includes('cf-challenge')) {
+                        return true;
+                    }
+                    // Recursively check shadow DOM children
+                    const shadowElements = element.shadowRoot.querySelectorAll('*');
+                    for (let el of shadowElements) {
+                        if (checkShadowDOM(el)) return true;
+                    }
+                }
+                return false;
+            }
+            
+            const allElements = document.querySelectorAll('*');
+            for (let element of allElements) {
+                if (checkShadowDOM(element)) return true;
+            }
+            return false;
+        """)
+        if shadow_check:
+            return True
+    except:
+        pass
+    
+    # Check meta tags for Cloudflare indicators
+    try:
+        meta_check = sb.execute_script("""
+            const metas = document.getElementsByTagName('meta');
+            for (let meta of metas) {
+                const content = (meta.content || '').toLowerCase();
+                const name = (meta.name || '').toLowerCase();
+                if (content.includes('cloudflare') || 
+                    name.includes('cf-') ||
+                    content.includes('turnstile')) {
+                    return true;
+                }
+            }
+            return false;
+        """)
+        if meta_check:
+            return True
+    except:
+        pass
+    
+    # Check for invisible/hidden Turnstile challenges
+    try:
+        hidden_elements = sb.execute_script("""
+            const elements = document.querySelectorAll('div, iframe');
+            for (let el of elements) {
+                const style = window.getComputedStyle(el);
+                const classes = el.className || '';
+                const id = el.id || '';
+                
+                // Check if element is related to Turnstile but hidden
+                if ((classes.includes('turnstile') || 
+                     id.includes('turnstile') ||
+                     classes.includes('cf-')) &&
+                    (style.display === 'none' || 
+                     style.visibility === 'hidden' ||
+                     parseFloat(style.opacity) === 0)) {
+                    return true;
+                }
+            }
+            return false;
+        """)
+        if hidden_elements:
+            return True
+    except:
+        pass
+    
+    # Final check: Look for Cloudflare Ray ID (indicates CF protection)
+    try:
+        if sb.is_element_present('div[class*="ray-id"]', timeout=0.5):
+            # If Ray ID is present with challenge elements
+            if sb.is_element_present('div[class*="challenge"]', timeout=0.5):
+                return True
+    except:
+        pass
+    
+    return False
+
+
+def wait_for_turnstile_completion(sb: BaseCase, max_wait: int = 30) -> bool:
+    """
+    Waits for Turnstile challenge to complete.
+    Returns True if challenge was completed, False if timeout.
+    """
+    start_time = time.time()
+    
+    while time.time() - start_time < max_wait:
+        # Check if we're still on a challenge page
+        if not is_turnstile_challenge_present(sb, timeout=2):
+            # Additional check: ensure we've navigated away from challenge
+            try:
+                current_url = sb.get_current_url()
+                if 'challenges.cloudflare.com' not in current_url:
+                    return True
+            except:
+                pass
+        
+        # Check for completion indicators
+        try:
+            completion_check = sb.execute_script("""
+                return (
+                    // Check if turnstile callback was executed
+                    window.__cfTurnstileCompleted === true ||
+                    // Check for success token
+                    document.querySelector('input[name="cf-turnstile-response"]')?.value?.length > 0 ||
+                    // Check for completion classes
+                    document.querySelector('.cf-turnstile-success') !== null
+                );
+            """)
+            if completion_check:
+                sb.sleep(0.5)  # Brief wait for redirect
+                return True
+        except:
+            pass
+        
+        sb.sleep(0.5)
+    
+    return False
+
+
+def scrape_from_hidemn(sb: BaseCase, verbose: bool = True) -> List[str]:
+    """
+    Scrapes hide.mn using its own dedicated browser instance.
     """
     if verbose:
         print("[RUNNING] 'Hide.mn' automation scraper has started.")
     
     all_proxies = set()
     
-    with browser_lock:
-        if verbose:
-            print("[INFO] Hide.mn: Acquired browser lock.")
-        
-        main_window = sb.driver.current_window_handle
-        sb.open_new_tab()
-        new_tab = sb.driver.window_handles[-1]
-        sb.switch_to_window(new_tab)
-        
-        try:
-            offset = 0
-            while True:
-                url = URL_TEMPLATE.format(offset=offset)
-                if verbose:
-                    print(f"[INFO] Hide.mn: Navigating to page with offset {offset}...")
+    try:
+        offset = 0
+        while True:
+            url = URL_TEMPLATE.format(offset=offset)
+            if verbose:
+                print(f"[INFO] Hide.mn: Navigating to page with offset {offset}...")
+            
+            sb.open(url)
+            
+            try:
+                # Use the new reliable multi-check method
+                if is_turnstile_challenge_present(sb):
+                    if verbose: print("[INFO] Hide.mn: Cloudflare challenge detected. Attempting to solve...")
+                    # sb.uc_gui_handle_captcha()
+                    sb.uc_gui_click_captcha()
                 
-                sb.open(url)
+                # Whether captcha was present or not, wait for the table to appear.
+                sb.wait_for_element_present(selector='.table_block > table:nth-child(1)', timeout=20)
 
-                try:
-                    time.sleep(0.5)
-                    sb.uc_gui_handle_captcha()
-                    sb.wait_for_element_present(selector='.table_block > table:nth-child(1)', timeout=15)
-                except Exception as e:
+            except Exception as e:
+                if verbose:
+                    print(f"[DEBUG] Hide.mn: Exception during CAPTCHA/table wait: {e}")
+                # If, after all attempts, the table is still not there, abort.
+                if not sb.is_element_present(selector='.table_block > table:nth-child(1)'):
                     if verbose:
-                        print(f"[DEBUG] Hide.mn: Initial exception during CAPTCHA/table wait: {e}")
-                    if not sb.is_element_present(selector='.table_block > table:nth-child(1)'):
-                        if verbose:
-                            print("[ERROR] Hide.mn: Failed to solve CAPTCHA or find table. Aborting.")
-                        break
-
-                page_content = sb.get_page_source()
-                if "No proxies found" in page_content:
-                    if verbose: print(f"[INFO] Hide.mn: Page reports no more proxies.")
+                        print("[ERROR] Hide.mn: Failed to solve CAPTCHA or find table. Aborting.")
                     break
 
-                newly_found = extract_proxies_from_content(page_content, verbose=False)
-                if not newly_found and offset > 0:
-                    if verbose: print(f"[INFO]   ... No proxies found on this page. Assuming end of list.")
-                    break
-                    
-                initial_count = len(all_proxies)
-                all_proxies.update(newly_found)
+            page_content = sb.get_page_source()
+            if "No proxies found" in page_content:
+                if verbose: print(f"[INFO] Hide.mn: Page reports no more proxies.")
+                break
+
+            newly_found = extract_proxies_from_content(page_content, verbose=False)
+            if not newly_found and offset > 0:
+                if verbose: print(f"[INFO]   ... No proxies found on this page. Assuming end of list.")
+                break
                 
-                if verbose:
-                    print(f"[INFO]   ... Hide.mn: Found {len(newly_found)} proxies. Total unique: {len(all_proxies)}.")
+            initial_count = len(all_proxies)
+            all_proxies.update(newly_found)
+            
+            if verbose:
+                print(f"[INFO]   ... Hide.mn: Found {len(newly_found)} proxies. Total unique: {len(all_proxies)}.")
 
-                if len(all_proxies) == initial_count and offset > 0:
-                    if verbose: print("[INFO]   ... Hide.mn: No new unique proxies found. Stopping.")
-                    break
-                
-                offset += 64
-                time.sleep(DELAY_SECONDS)
-        except Exception as e:
-            if verbose:
-                print(f"[ERROR] An exception occurred in Hide.mn scraper: {e}")
-        finally:
-            if new_tab in sb.driver.window_handles and len(sb.driver.window_handles) > 1:
-                sb.switch_to_window(new_tab)
-                sb.driver.close()
-            if main_window in sb.driver.window_handles:
-                sb.switch_to_window(main_window)
-            if verbose:
-                print("[INFO] Hide.mn: Released browser lock.")
+            if len(all_proxies) == initial_count and offset > 0:
+                if verbose: print("[INFO]   ... Hide.mn: No new unique proxies found. Stopping.")
+                break
+            
+            offset += 64
+            time.sleep(DELAY_SECONDS)
+    except Exception as e:
+        if verbose:
+            print(f"[ERROR] An exception occurred in Hide.mn scraper: {e}")
 
     if verbose:
         print(f"[INFO] Hide.mn: Finished. Found a total of {len(all_proxies)} unique proxies.")
