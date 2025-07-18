@@ -113,7 +113,6 @@ def main():
         help="Timeout for each proxy check. E.g., '500ms', '10s', '8'. Default is 8 seconds."
     )
     parser.add_argument('--prepend-protocol', action='store_true', help="Prepend protocol to proxies in specific files.")
-    # --- NEW: Verbose flag ---
     parser.add_argument('-v', '--verbose', action='store_true', help="Enable detailed logging for failures and diagnostics.")
     args = parser.parse_args()
 
