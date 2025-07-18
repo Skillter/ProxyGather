@@ -33,12 +33,18 @@ import time
 
 class ProxyChecker:
     JUDGE_RETRY_ATTEMPTS = 3
-    LIVENESS_CHECK_URL = "http://www.google.com/"
-    LIVENESS_CHECK_STRING = "Google"
+    
+    # --- A lot of proxies don't pass Google because google sees abused proxies ---
+    # --- Mozilla either doesn't check or is easier to pass ---
+    # --- Google will yield better quality, less abused proxies, but lesser amount ---
+    # LIVENESS_CHECK_URL = "http://www.google.com/"
+    # LIVENESS_CHECK_STRING = "Google"
+    LIVENESS_CHECK_URL = "https://addons.mozilla.org/en-US/firefox/"
+    LIVENESS_CHECK_STRING = "Firefox"
 
     def __init__(self, timeout: float = 10.0, verbose: bool = False):
         self.timeout_ms = int(timeout * 1000)
-        self.verbose = verbose # store the verbose flag
+        self.verbose = verbose 
         
         initial_judges = [
             'http://proxyjudge.us/azenv.php',
