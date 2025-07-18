@@ -15,23 +15,50 @@ PROXY_LIST_API_URL = "https://proxy.webshare.io/api/v2/proxy/list/?mode=direct&p
 CREDENTIALS_FILE = "credentials.json"
 
 USERNAME_WORDS = [
-    "shadow", "viper", "glitch", "nexus", "pulse", "void", "nova", "cobra",
-    "raven", "bolt", "phantom", "wraith", "serpent", "hawk", "blade", "storm",
-    "titan", "golem", "echo", "cipher", "vector", "quark", "hydro", "pyro",
-    "aero", "terra", "luna", "solar", "cyborg", "laser", "plasma", "droid",
-    "matrix", "nebula", "comet", "orbit", "ryzen", "intel", "core", "volta",
-    "dragon", "griffin", "sphinx", "wizard", "mage", "sorcerer", "warlock",
-    "elf", "orc", "goblin", "troll", "nymph", "siren", "phoenix", "hydra",
-    "kraken", "cyclops", "minotaur", "centaur", "pixie", "sprite", "banshee",
-    "wolf", "tiger", "panther", "jaguar", "cougar", "lynx", "falcon", "eagle",
-    "hornet", "wasp", "spider", "scorpion", "shark", "whale", "orca",
-    "forest", "mountain", "river", "ocean", "desert", "jungle", "canyon",
-    "meadow", "stream", "pebble", "boulder", "root", "branch",
-    "king", "queen", "ace", "jack", "joker", "spade", "omega", "alpha", "beta",
-    "delta", "gamma", "sigma", "theta", "zeta", "axiom", "enigma", "paradox",
-    "vertex", "zenith", "nadir", "karma", "chaos", "order", "logic", "fate",
-    "anchor", "compass", "hammer", "anvil", "shield", "sword", "arrow", "bow",
-    "needle", "thread", "key", "lock", "chain", "gear", "engine", "piston"
+    "ability", "above", "account", "across", "action", "active", "actor", "actual", 
+    "address", "admit", "affect", "after", "again", "against", "agent", "agree", 
+    "ahead", "album", "alive", "allow", "almost", "alone", "along", "alpha", 
+    "always", "amazing", "among", "amount", "anchor", "angel", "animal", "another", 
+    "answer", "anxious", "anyone", "apart", "apple", "apply", "archer", "argue", 
+    "around", "arrive", "arrow", "article", "artist", "assume", "attack", "author", 
+    "autumn", "awake", "award", "aware", "away", "axiom", "baby", "balance", 
+    "banana", "basic", "basket", "battle", "beach", "beauty", "become", "before", 
+    "begin", "behave", "behind", "believe", "below", "beside", "beta", "better", 
+    "beyond", "bicycle", "blade", "blame", "blanket", "bless", "blind", "blood", 
+    "blossom", "board", "bottle", "bottom", "bounce", "brain", "branch", "brave", 
+    "bread", "break", "breeze", "bridge", "brief", "bright", "bring", "brother", 
+    "brown", "brush", "build", "bullet", "butter", "cable", "cactus", "camera", 
+    "campus", "cancel", "candy", "canvas", "carbon", "career", "carry", "catch", 
+    "cause", "celeb", "center", "century", "certain", "chain", "chair", "chance", 
+    "change", "chaos", "chapter", "charge", "chase", "cheese", "cherry", "choice", 
+    "circle", "citizen", "claim", "classic", "clean", "clear", "clever", "client", 
+    "climate", "clock", "close", "cloud", "cobra", "coffee", "collect", "college", 
+    "color", "combine", "comfort", "common", "company", "compare", "complex", "concept", 
+    "confirm", "connect", "contact", "contain", "content", "contest", "context", "control", 
+    "cookie", "coral", "corner", "correct", "costume", "cotton", "couple", "course", 
+    "cover", "craft", "crash", "create", "credit", "crime", "crisis", "critic", 
+    "cross", "crowd", "cruise", "crystal", "culture", "current", "custom", "cycle", 
+    "damage", "dance", "danger", "daughter", "decade", "decide", "declare", "deep", 
+    "defend", "define", "degree", "delay", "deliver", "demand", "depend", "depth", 
+    "desert", "design", "desire", "detail", "detect", "develop", "device", "diamond", 
+    "digital", "dinner", "direct", "discover", "discuss", "display", "distance", "divide", 
+    "doctor", "document", "double", "dragon", "drama", "dream", "dress", "drink", 
+    "drive", "during", "eagle", "early", "earth", "easily", "eastern", "echo", 
+    "ecology", "economy", "effect", "effort", "either", "electric", "elegant", "element", 
+    "elite", "email", "emerge", "emotion", "empty", "enable", "energy", "engage", 
+    "engine", "enjoy", "enough", "ensure", "enter", "entire", "entry", "equal", 
+    "escape", "essay", "estate", "event", "every", "evidence", "exact", "example", 
+    "except", "excite", "exist", "expand", "expect", "expert", "explain", "explore", 
+    "express", "extend", "extra", "fabric", "factor", "family", "famous", "fantasy", 
+    "father", "fault", "favorite", "feature", "federal", "feeling", "female", "fiction", 
+    "field", "fight", "figure", "final", "finance", "finger", "finish", "flame", 
+    "flavor", "flight", "float", "floor", "flower", "focus", "follow", "force", 
+    "forest", "forget", "formal", "format", "forward", "found", "frame", "freedom", 
+    "friend", "future", "galaxy", "gallery", "gamma", "garden", "garlic", "gather", 
+    "general", "genius", "gentle", "ghost", "giant", "giggle", "glass", "global", 
+    "glory", "glove", "golden", "govern", "grace", "grade", "grand", "grant", 
+    "grape", "graph", "grass", "great", "green", "greet", "griffin", "group", 
+    "guard", "guess", "guest", "guide", "guilty", "habit", "hammer", "happen"
 ]
 
 def _generate_random_email():
@@ -119,61 +146,96 @@ def _login(sb: BaseCase, creds: Dict, verbose: bool) -> bool:
         return False
 
 def _register(sb: BaseCase, verbose: bool) -> Dict:
-    if verbose: print("[INFO] Webshare: Starting new registration process.")
     sb.open(REGISTER_URL)
-    sb.wait_for_element("input#email-input")
 
-    email = _generate_random_email()
-    password = _generate_random_password()
-    
-    if verbose: print(f"[INFO] Webshare: Simulating typing for new account: {email}")
-    sb.type("input#email-input", email)
-    sb.type("input[data-testid=password-input]", password)
-    sb.click("button[data-testid=signup-button]")
+    max_retries = 3
+    for i in range (0, max_retries):
+        i+=1
+        if verbose: print(f"[INFO] Webshare: Starting new registration process. Try {i}/{max_retries}")
+        sb.wait_for_element("input#email-input")
 
-    # time.sleep(2)  # Allow time for captcha to potentially load
-    
-    # Google reCAPTCHA detection selectors
-    recaptcha_challenge_iframe = 'iframe[src*="google.com/recaptcha/api2/bframe"]'
-    recaptcha_anchor_iframe = 'iframe[src*="google.com/recaptcha/api2/anchor"]'
-    recaptcha_badge = '.grecaptcha-badge'
-
-    # wait for recaptcha
-    try: 
-        sb.wait_for_element_visible(recaptcha_challenge_iframe, timeout=10)
-    except Exception as e: 
-        print(e)
-    
-    try:
-        if sb.is_element_visible(recaptcha_challenge_iframe):
-            if verbose: print("[INFO] Webshare: Google reCAPTCHA challenge detected and visible.")
-            try:
-                # Wait for the challenge to disappear (indicating success)
-                sb.wait_for_element_not_visible(recaptcha_challenge_iframe, timeout=120)
-                if verbose: print("[INFO] Webshare: reCAPTCHA challenge disappeared.")
-            except Exception as e:
-                if verbose: print(f"[WARN] Webshare: reCAPTCHA challenge never disappeared: {e}")
+        email = _generate_random_email()
+        password = _generate_random_password()
         
-        elif sb.is_element_present(recaptcha_badge) or sb.is_element_present(recaptcha_anchor_iframe):
-            if verbose: print("[INFO] Webshare: reCAPTCHA detected but no challenge shown yet.")
+        if verbose: print(f"[INFO] Webshare: Simulating typing for new account: {email}")
+        sb.type("input#email-input", email)
+        sb.type("input[data-testid=password-input]", password)
+        sb.click("button[data-testid=signup-button]")
+
+        # time.sleep(2)  # Allow time for captcha to potentially load
         
-        else:
-            if verbose: print("[INFO] Webshare: No reCAPTCHA detected on the page.")
+        # Google reCAPTCHA detection selectors
+        recaptcha_challenge_iframe = 'iframe[src*="google.com/recaptcha/api2/bframe"]'
+        recaptcha_anchor_iframe = 'iframe[src*="google.com/recaptcha/api2/anchor"]'
+        recaptcha_badge = '.grecaptcha-badge'
+
+        # wait for recaptcha
+        try: 
+            sb.wait_for_element_visible(recaptcha_challenge_iframe, timeout=10)
+        except Exception as e:
+            if verbose: print(e)
+        
+        try:
+            if sb.is_element_visible(recaptcha_challenge_iframe):
+                if verbose: print("[INFO] Webshare: Google reCAPTCHA challenge detected and visible.")
+                try:
+                    # Wait for the challenge to disappear (indicating success)
+                    sb.wait_for_element_not_visible(recaptcha_challenge_iframe, timeout=120)
+                    if verbose: print("[INFO] Webshare: reCAPTCHA challenge disappeared.")
+                except Exception as e:
+                    if verbose: print(f"[WARN] Webshare: reCAPTCHA challenge never disappeared: {e}")
             
-    except Exception as e:
-        if verbose: print(f"[ERROR] Webshare: Error during reCAPTCHA detection: {e}")
+            elif sb.is_element_present(recaptcha_badge) or sb.is_element_present(recaptcha_anchor_iframe):
+                if verbose: print("[INFO] Webshare: reCAPTCHA detected but no challenge was needed.")
+            
+            else:
+                if verbose: print("[INFO] Webshare: No reCAPTCHA detected on the page.")
+                
+        except Exception as e:
+            if verbose: print(f"[ERROR] Webshare: Error during reCAPTCHA detection: {e}")
+        
+        time.sleep(4)
+        if verbose: print("[INFO] Webshare: Getting page source")
+        page_source = sb.get_page_source()
+        if 'Cannot sign up with' in page_source \
+            or 'suspicious email' in page_source \
+            or 'please contact customer support team if you think otherwise' in page_source:
+                
+            print("[ERROR] Webshare: The email was deemed suspicious, retrying with a different one.")
+        
+            if verbose:
+                filename = "Webshare-email-deemed-suspicious.html"
+                with open(filename, "w", encoding="utf-8") as f:
+                    f.write(page_source)
+                    print("[INFO] Webshare: The page content was written to " + filename)
+            continue
+        
+        getstarted_button = 'button:contains("Let\'s Get Started")'
+        try: 
+            sb.wait_for_element_clickable(getstarted_button, timeout=7) # 7 plus 4 from earlier time.sleep
+        except Exception as e:
+            if verbose: print(e)
+
+
+        if sb.is_element_clickable(getstarted_button):
+            if verbose: print("[INFO] Webshare: 'Let's Get Started' button found and it's clickable. Clicking...")
+            break
+        elif sb.is_element_visible(getstarted_button):
+            if verbose: print("[WARNING] Webshare: 'Let's Get Started' button found but it's not clickable. Trying to click anyway...")
+            break
+        elif sb.is_element_present(getstarted_button):
+            if verbose: print("[WARNING] Webshare: 'Let's Get Started' button found but it's not visible. Trying to click anyway...")
+            break
+        else:
+            print("[ERROR] Webshare: 'Let's Get Started' button not found.")
+            if i < max_retries: print("[INFO] Webshare: Retrying the registration process")
+            continue
         
         
-    getstarted_button = 'button:contains("Let\'s Get Started")'
-    sb.wait_for_element_clickable(getstarted_button, timeout=10)
-    if sb.wait_for_element_clickable(getstarted_button):
-        if verbose: print("[INFO] Webshare: 'Let's Get Started' button found and it's clickable.")
-    elif sb.wait_for_element(getstarted_button):
-        if verbose: print("[INFO] Webshare: 'Let's Get Started' button found but it's not clickable.")
-    elif sb.wait_for_element_present(getstarted_button):
-        if verbose: print("[INFO] Webshare: 'Let's Get Started' button found but it's not visible.")
-    else:
-        if verbose: print("[INFO] Webshare: 'Let's Get Started' button not found.")
+        
+        
+        
+
     sb.click('button:contains("Let\'s Get Started")')
 
     
