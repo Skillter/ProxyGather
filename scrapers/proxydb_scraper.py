@@ -34,7 +34,7 @@ def scrape_all_from_proxydb(verbose: bool = False) -> List[str]:
         # --- FIXED: Correctly unpack the tuple returned by scrape_proxies ---
         # scrape_proxies now returns (proxies, successful_urls), so we need to account for that.
         # We only care about the proxies here, so we can ignore the second value.
-        newly_scraped, _ = scrape_proxies([(url, None, None)], verbose=False)
+        newly_scraped, _ = scrape_proxies([(url, None, None)], verbose)
         
         if not newly_scraped:
             if verbose:
