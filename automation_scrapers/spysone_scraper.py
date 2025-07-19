@@ -31,7 +31,7 @@ def _extract_and_deobfuscate(sb: BaseCase, verbose: bool) -> Set[str]:
     
     # 2. Find the main script that defines the obfuscated port variables.
     script_match = re.search(
-        r'<script type="text/javascript">([a-zA-Z0-9=;^]+)</script>',
+        r'<script type="text/javascript">([\s\S]*?)</script>',
         html_content
     )
     
@@ -68,16 +68,19 @@ def _extract_and_deobfuscate(sb: BaseCase, verbose: bool) -> Set[str]:
             # 6. Find the script tag within the current row (tr).
             port_script_element = row.find_element("css selector", "script")
             port_script_content = port_script_element.get_attribute('innerHTML')
-            if verbose: print(f"[DEBUG] Row {i+1}: Found port script content for IP {ip}: {port_script_content}")
+            if verbose: print(f"[DEBUG] Row {i+1}: Found port script content for IP {ip}: {port_script_content.strip()}")
 
-            # 7. Extract the calculation part (e.g., (var1^var2)+(var3^var4)) and execute it.
-            # This regex is now more flexible to handle variations.
-            port_calc_match = re.search(r'document\.write\("<font class=spy2>:<\/font>"\+(.*?)\)', port_script_content)
-            if not port_calc_match:
-                if verbose: print(f"[DEBUG] Row {i+1}: Could not find port calculation expression for IP {ip}")
+            # 7. Extract all XOR expressions and concatenate them to form the port
+            # Pattern matches: (var1 ^ var2) expressions
+            xor_expressions = re.findall(r'\(([^)]+\^[^)]+)\)', port_script_content)
+            
+            if not xor_expressions:
+                if verbose: print(f"[DEBUG] Row {i+1}: Could not find port calculation expressions for IP {ip}")
                 continue
             
-            port_calc_js = "return " + port_calc_match.group(1)
+            # Build JavaScript to evaluate all XOR expressions and concatenate them
+            port_calc_js = "return String(" + " + String(".join(xor_expressions) + ")" * len(xor_expressions)
+            
             if verbose: print(f"[DEBUG] Row {i+1}: Executing port script for IP {ip}: `{port_calc_js}`")
             
             port = sb.execute_script(port_calc_js)
@@ -87,14 +90,13 @@ def _extract_and_deobfuscate(sb: BaseCase, verbose: bool) -> Set[str]:
                 if verbose: print(f"[DEBUG] Row {i+1}: Successfully deobfuscated proxy: {proxy_str}")
                 found_proxies.add(proxy_str)
             else:
-                if verbose: print(f"[DEBUG] Row {i+1}: Deobfuscation for IP {ip} resulted in an empty port.")
+                if verbose: print(f"[DEBUG] Row {i+1}: Deobfuscation for IP {ip} resulted in an empty or invalid port: '{port}'")
 
         except Exception as e:
             if verbose: print(f"[DEBUG] Row {i+1}: Skipped due to an error during processing: {e}")
             continue
             
     return found_proxies
-
 def scrape_from_spysone(sb: BaseCase, verbose: bool = False) -> List[str]:
     """
     Scrapes spys.one using a browser to handle JavaScript and Cloudflare challenges.
