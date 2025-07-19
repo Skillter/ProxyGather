@@ -65,13 +65,14 @@ def _extract_and_deobfuscate(sb: BaseCase, verbose: bool) -> Set[str]:
                 continue
             ip = ip_match.group(1)
 
-            # 6. Find the script tag within the current row (tr). This is the fix.
+            # 6. Find the script tag within the current row (tr).
             port_script_element = row.find_element("css selector", "script")
             port_script_content = port_script_element.get_attribute('innerHTML')
             if verbose: print(f"[DEBUG] Row {i+1}: Found port script content for IP {ip}: {port_script_content}")
 
             # 7. Extract the calculation part (e.g., (var1^var2)+(var3^var4)) and execute it.
-            port_calc_match = re.search(r'\(":"\+([^)]+)\)', port_script_content)
+            # This regex is now more flexible to handle variations.
+            port_calc_match = re.search(r'document\.write\("<font class=spy2>:<\/font>"\+(.*?)\)', port_script_content)
             if not port_calc_match:
                 if verbose: print(f"[DEBUG] Row {i+1}: Could not find port calculation expression for IP {ip}")
                 continue
