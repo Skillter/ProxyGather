@@ -1,171 +1,287 @@
 import re
 import time
 import random
-from typing import List
+import requests
+from typing import List, Dict, Optional
 from seleniumbase import BaseCase
 import helper.turnstile as turnstile
 
-def _deobfuscate_and_extract(html_content: str, verbose: bool) -> List[str]:
+def _solve_challenge_and_get_creds(sb: BaseCase, url: str, verbose: bool) -> dict:
     """
-    Parses the raw HTML from spys.one, deobfuscates the JavaScript-encoded
-    ports, and returns a list of full IP:PORT proxies.
+    Uses the browser to solve a Cloudflare challenge on a given URL
+    and returns the necessary cookies and user-agent for direct requests.
     """
-    proxies = []
+    if verbose:
+        print(f"[INFO] Spys.one: Using browser to access {url}...")
     
-    # Step 1: Find the main packer script which contains the port deobfuscation logic.
-    packer_match = re.search(r"eval\(function\(p,r,o,x,y,s\)\{.*\}\((.*)\)\)", html_content, re.DOTALL)
-    if not packer_match:
-        if verbose: print("[WARN] Spys.one: Could not find the main packer script for deobfuscation.")
-        return []
-
-    # Step 2: Unpack the script to get the raw variable assignments.
-    # This is a Python port of the JS packer/unpacker logic.
+    sb.open(url)
+    
     try:
-        m = re.search(r"\}\('(.+)',(\d+),(\d+),'(.+)'\.split", packer_match.group(0))
-        p, r, o, x_str = m.groups()
-        r, o = int(r), int(o)
-        x = x_str.split('^')
-    except Exception as e:
-        if verbose: print(f"[ERROR] Spys.one: Failed to parse packer arguments: {e}")
-        return []
-
-    def get_key(val):
-        base = r
-        chars = "0123456789abcdefghijklmnopqrstuvwxyz"
-        s = '' if val < base else get_key(val // base)
-        val = val % base
-        return s + (chr(val + 29) if val > 35 else chars[val])
-
-    for i in range(o - 1, -1, -1):
-        if x[i]:
-            key = get_key(i)
-            p = re.sub(r'\b' + re.escape(key) + r'\b', x[i], p)
-    
-    deobfuscated_js = p
-
-    # Step 3: Evaluate the deobfuscated JS to get the values of port variables.
-    port_vars = {}
-    assignments = deobfuscated_js.strip().split(';')
-    for assignment in assignments:
-        if not assignment or '=' not in assignment:
-            continue
-        try:
-            var_name, expression = assignment.split('=', 1)
-            var_name = var_name.strip()
-            expression = expression.strip()
-            
-            if '^' in expression:
-                op1_name, op2_name = expression.split('^')
-                op1 = port_vars[op1_name.strip()]
-                op2 = port_vars[op2_name.strip()]
-                port_vars[var_name] = op1 ^ op2
-            else:
-                port_vars[var_name] = int(expression)
-        except (ValueError, KeyError) as e:
-            if verbose: print(f"[WARN] Spys.one: Could not evaluate JS expression '{assignment}': {e}")
-            continue
-
-    # Step 4: Find all proxy table rows and extract the IP and the obfuscated port script.
-    proxy_rows = re.findall(r'<tr class="spy1x.*?" onmouseover.*?</tr>|<tr class="spy1xx.*?" onmouseover.*?</tr>', html_content, re.DOTALL)
-    ip_regex = re.compile(r'(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})')
-    script_regex = re.compile(r'<script>document\.write\(":"\+(.*?)\)</script>')
-
-    for row in proxy_rows:
-        ip_match = ip_regex.search(row)
-        if not ip_match: continue
-        ip = ip_match.group(1)
-
-        script_match = script_regex.search(row)
-        if not script_match: continue
+        solve_cf_if_present(sb, verbose, 5)
         
-        port_expression = script_match.group(1)
-        port_parts_str = re.findall(r'\(([^)]+)\)', port_expression)
+        sb.wait_for_element_present(selector='body > table:nth-child(3)', timeout=20)
+        if verbose:
+            print("[SUCCESS] Spys.one: Challenge solved or bypassed. Table is present.")
         
-        # Step 5: Calculate the real port using the variables and expressions.
-        try:
-            port = ""
-            for part in port_parts_str:
-                op1_name, op2_name = part.split('^')
-                val1 = port_vars[op1_name.strip()]
-                val2 = port_vars[op2_name.strip()]
-                port += str(val1 ^ val2)
+        cookies = sb.get_cookies()
+        cf_clearance_cookie = next((c for c in cookies if c['name'] == 'cf_clearance'), None)
+        
+        if not cf_clearance_cookie:
+            raise ValueError("Could not find 'cf_clearance' cookie after solving challenge.")
             
-            if port:
-                proxies.append(f"{ip}:{port}")
-        except (KeyError, ValueError) as e:
-            if verbose: print(f"[WARN] Spys.one: Failed to deobfuscate port for IP {ip}: {e}")
-            continue
-            
-    return proxies
-
-def scrape_from_spysone(sb: BaseCase, verbose: bool = False) -> List[str]:
-    """
-    Scrapes spys.one by using a browser to navigate, apply filters, handle
-    Cloudflare challenges, and deobfuscate ports.
-    """
-    if verbose: print("[RUNNING] 'Spys.one' automation scraper has started.")
-    
-    
-    all_proxies = set()
-    base_url = "https://spys.one/en/free-proxy-list/"
-    
-    payloads = [
-        {'xf1': '0', 'xf5': '0'},  # All Proxies
-        {'xf1': '0', 'xf5': '2'},  # SOCKS
-        {'xf1': '1', 'xf5': '1'},  # HTTP/S - ANM + HIA
-        {'xf1': '2', 'xf5': '1'},  # HTTP/S - NOA
-        {'xf1': '3', 'xf5': '1'},  # HTTP/S - ANM
-        {'xf1': '4', 'xf5': '1'},  # HTTP/S - HIA
-    ]
-
-    try:
-        for i, payload in enumerate(payloads):
-            if verbose: print(f"[INFO] Spys.one: Scraping page {i+1}/{len(payloads)} with payload {payload}...")
-            
-            # sb.user_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:140.0) Gecko/20100101 Firefox/140.0'
-            
-            sb.open(base_url)
-            sb.wait_for_ready_state_complete()
-
-            solve_cf_if_present(sb, verbose)
-            # Now that the page is loaded, interact with the form
-            sb.wait_for_element_visible('#xpp')
-            # Remove onchange handlers to prevent auto-submit on each selection
-            sb.execute_script("document.querySelectorAll('form[method=post] select').forEach(s => s.removeAttribute('onchange'));")
-            # Set to 500 proxies per page for maximum efficiency
-            print("before 6")
-            sb.select_option_by_value('#xpp', '5')
-            solve_cf_if_present(sb, verbose)
-            
-            # Set payload values for the current filter set
-            for key, value in payload.items():
-                sb.select_option_by_value(f'select[name={key}]', value)
-
-            # Manually submit the form with all filters applied
-            sb.execute_script("document.querySelector('form[method=post]').submit();")
-            time.sleep(1.5)
-
-            # Check for challenge again after submission, as it can reappear
-            solve_cf_if_present(sb, verbose)
-            html_content = sb.get_page_source()
-            newly_found = _deobfuscate_and_extract(html_content, verbose)
-            if verbose:
-                print(f"[INFO]   ... Found {len(newly_found)} proxies. Total unique: {len(all_proxies | set(newly_found))}")
-            
-            all_proxies.update(newly_found)
-            time.sleep(random.uniform(2.0, 4.0)) # Be polite between different filter scrapes
+        user_agent = sb.get_user_agent()
+        
+        return {
+            "cookies": {
+                'cf_clearance': cf_clearance_cookie['value']
+            },
+            "headers": {
+                'User-Agent': user_agent
+            }
+        }
 
     except Exception as e:
         if verbose:
-            print(f"[ERROR] A critical exception occurred in Spys.one scraper: {e}")
-            sb.save_screenshot("spysone_error.png")
-            sb.save_page_source("spysone_error.html")
+            print(f"[ERROR] Spys.one: Failed to solve challenge or extract credentials: {e}")
+        return {}
 
-    if verbose:
-        print(f"[INFO] Spys.one: Finished. Found a total of {len(all_proxies)} unique proxies.")
+def _deobfuscate_ports(html_content: str, verbose: bool = False) -> Dict[str, str]:
+    """
+    Extracts IP addresses and deobfuscates their corresponding ports from the HTML.
+    Returns a dictionary mapping IP addresses to their ports.
+    """
+    # First, find and parse the main eval script that contains variable definitions
+    eval_pattern = r'eval\(function\(p,r,o,x,y,s\){.*?\}.*?\((.*?)\)\)'
+    eval_match = re.search(eval_pattern, html_content, re.DOTALL)
     
-    return sorted(list(all_proxies))
+    if not eval_match:
+        if verbose:
+            print("[WARN] Spys.one: Could not find eval script for port deobfuscation")
+        return {}
+    
+    # Parse the packed script
+    try:
+        # Extract the parameters from the eval call
+        params_match = re.search(r"'([^']*)',(\d+),(\d+),'([^']*)'\.split\('([^']*)'\)", eval_match.group(1))
+        if not params_match:
+            if verbose:
+                print("[ERROR] Spys.one: Could not parse eval parameters")
+            return {}
+        
+        p, radix, count, words, separator = params_match.groups()
+        radix = int(radix)
+        count = int(count)
+        words_list = words.split(separator)
+        
+        # Unpack the script
+        def base_convert(num, base):
+            if num == 0:
+                return '0'
+            digits = "0123456789abcdefghijklmnopqrstuvwxyz"
+            result = []
+            while num:
+                result.append(digits[num % base])
+                num //= base
+            return ''.join(reversed(result))
+        
+        # Replace packed variables
+        for i in range(count - 1, -1, -1):
+            if i < len(words_list) and words_list[i]:
+                key = base_convert(i, radix) if i >= radix else str(i) if i < 10 else chr(i - 10 + ord('a'))
+                if radix > 35 and i > 35:
+                    key = chr(i + 29)
+                p = re.sub(r'\b' + re.escape(key) + r'\b', words_list[i], p)
+        
+        # Now p contains the unpacked JavaScript with variable assignments
+        # Parse the variable assignments
+        variables = {}
+        
+        # Parse simple assignments (e.g., l=11721^3467)
+        for match in re.finditer(r'(\w+)=(\d+)\^(\d+)', p):
+            var_name, val1, val2 = match.groups()
+            variables[var_name] = int(val1) ^ int(val2)
+        
+        # Parse numeric assignments (e.g., c=4)
+        for match in re.finditer(r'(\w+)=(\d+)(?:;|$)', p):
+            var_name, value = match.groups()
+            if var_name not in variables:  # Don't overwrite XOR results
+                variables[var_name] = int(value)
+        
+        # Parse variable XOR assignments (e.g., K=j^l)
+        for match in re.finditer(r'(\w+)=(\w+)\^(\w+)', p):
+            var_name, var1, var2 = match.groups()
+            if var1 in variables and var2 in variables:
+                variables[var_name] = variables[var1] ^ variables[var2]
+        
+    except Exception as e:
+        if verbose:
+            print(f"[ERROR] Spys.one: Failed to parse eval script: {e}")
+        return {}
+    
+    # Now extract IPs and their obfuscated port expressions
+    ip_port_map = {}
+    
+    # Pattern to find IP addresses with their script tags
+    ip_pattern = r'<font class="spy14">(\d+\.\d+\.\d+\.\d+)<script>document\.write\(":"\+(.*?)\)</script>'
+    
+    for match in re.finditer(ip_pattern, html_content):
+        ip, port_expr = match.groups()
+        
+        # Parse the port expression (e.g., (ZeroNineFiveNine^Three5Nine)+(Three5FourZero^NineFiveZero)+...)
+        port_parts = re.findall(r'\((\w+)\^(\w+)\)', port_expr)
+        
+        try:
+            port = ""
+            for var1, var2 in port_parts:
+                if var1 in variables and var2 in variables:
+                    port += str(variables[var1] ^ variables[var2])
+                else:
+                    if verbose:
+                        print(f"[WARN] Spys.one: Unknown variables {var1} or {var2} for IP {ip}")
+                    break
+            else:
+                # Only add if we successfully decoded all parts
+                if port:
+                    ip_port_map[ip] = port
+        except Exception as e:
+            if verbose:
+                print(f"[WARN] Spys.one: Failed to decode port for IP {ip}: {e}")
+    
+    return ip_port_map
 
+def _extract_proxies_from_html(html_content: str, verbose: bool = False) -> List[str]:
+    """
+    Extracts proxies from the HTML content by deobfuscating the ports.
+    """
+    ip_port_map = _deobfuscate_ports(html_content, verbose)
+    
+    proxies = []
+    for ip, port in ip_port_map.items():
+        proxies.append(f"{ip}:{port}")
+    
+    return proxies
+
+def _make_request_with_payload(url: str, payload: dict, cookies: dict = None, headers: dict = None, verbose: bool = False) -> Optional[str]:
+    """
+    Makes a POST request with the given payload and returns the response text.
+    """
+    try:
+        request_headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Origin': 'https://spys.one',
+            'Referer': url
+        }
+        
+        if headers:
+            request_headers.update(headers)
+        
+        response = requests.post(url, data=payload, headers=request_headers, cookies=cookies, timeout=15)
+        
+        if response.status_code == 200:
+            return response.text
+        else:
+            if verbose:
+                print(f"[WARN] Spys.one: Request failed with status {response.status_code}")
+            return None
+            
+    except Exception as e:
+        if verbose:
+            print(f"[ERROR] Spys.one: Request failed: {e}")
+        return None
+
+def scrape_from_spysone(sb: BaseCase, verbose: bool = False) -> List[str]:
+    """
+    Scrapes proxies from spys.one using either direct requests or browser automation.
+    """
+    if verbose:
+        print("[RUNNING] 'Spys.one' automation scraper has started.")
+    
+    all_proxies = set()
+    base_url = "https://spys.one/free-proxy-list/ALL/"
+    
+    # First, try a simple request to check if we need browser automation
+    initial_payload = {'xx0': '0', 'xpp': '5', 'xf1': '0', 'xf2': '0', 'xf4': '0', 'xf5': '0'}
+    
+    if verbose:
+        print("[INFO] Spys.one: Attempting direct request...")
+    
+    initial_response = _make_request_with_payload(base_url, initial_payload, verbose=verbose)
+    
+    cookies = None
+    headers = None
+    use_browser = False
+    
+    if initial_response and '<font class="spy14">' in initial_response:
+        # Direct request worked, extract proxies
+        if verbose:
+            print("[SUCCESS] Spys.one: Direct request successful, extracting proxies...")
+        initial_proxies = _extract_proxies_from_html(initial_response, verbose)
+        all_proxies.update(initial_proxies)
+    else:
+        # Need to use browser to solve Cloudflare challenge
+        use_browser = True
+        if verbose:
+            print("[INFO] Spys.one: Direct request failed, using browser automation...")
+        
+        creds = _solve_challenge_and_get_creds(sb, base_url, verbose)
+        
+        if creds and 'cookies' in creds:
+            cookies = creds['cookies']
+            headers = creds.get('headers', {})
+            
+            # Extract proxies from the current page
+            page_content = sb.get_page_source()
+            initial_proxies = _extract_proxies_from_html(page_content, verbose)
+            all_proxies.update(initial_proxies)
+            
+            if verbose:
+                print(f"[INFO] Spys.one: Found {len(initial_proxies)} proxies from initial page")
+        else:
+            if verbose:
+                print("[ERROR] Spys.one: Failed to solve Cloudflare challenge")
+            return list(all_proxies)
+    
+    # Define the payloads for different proxy types
+    payloads = [
+        {'xx0': '0', 'xpp': '5', 'xf1': '0', 'xf2': '0', 'xf4': '0', 'xf5': '2'},  # SOCKS
+        {'xx0': '0', 'xpp': '5', 'xf1': '2', 'xf2': '2', 'xf4': '0', 'xf5': '1'},  # HTTPS - NOA - SSL+
+        {'xx0': '0', 'xpp': '5', 'xf1': '2', 'xf2': '1', 'xf4': '0', 'xf5': '1'},  # HTTPS - NOA - SSL
+        {'xx0': '0', 'xpp': '5', 'xf1': '1', 'xf2': '0', 'xf4': '0', 'xf5': '1'},  # HTTP - ANM + HIA
+        {'xx0': '0', 'xpp': '5', 'xf1': '2', 'xf2': '0', 'xf4': '0', 'xf5': '1'},  # HTTP - NOA
+        {'xx0': '0', 'xpp': '5', 'xf1': '3', 'xf2': '0', 'xf4': '0', 'xf5': '1'},  # HTTP - ANM
+        {'xx0': '0', 'xpp': '5', 'xf1': '4', 'xf2': '0', 'xf4': '0', 'xf5': '1'}   # HTTP - HIA
+    ]
+    
+    # Make requests with different payloads
+    for i, payload in enumerate(payloads):
+        if verbose:
+            print(f"[INFO] Spys.one: Fetching page {i+2}/{len(payloads)+1} with payload {payload}...")
+        
+        # Add a small delay between requests
+        time.sleep(random.uniform(1.0, 2.0))
+        
+        response = _make_request_with_payload(base_url, payload, cookies=cookies, headers=headers, verbose=verbose)
+        
+        if response and '<font class="spy14">' in response:
+            proxies = _extract_proxies_from_html(response, verbose)
+            new_proxies = set(proxies) - all_proxies
+            all_proxies.update(proxies)
+            
+            if verbose:
+                print(f"[INFO] Spys.one: Found {len(new_proxies)} new proxies. Total: {len(all_proxies)}")
+        else:
+            if verbose:
+                print(f"[WARN] Spys.one: Failed to fetch page with payload {payload}")
+    
+    final_proxies = sorted(list(all_proxies))
+    
+    if verbose:
+        print(f"[COMPLETED] Spys.one: Finished. Found {len(final_proxies)} unique proxies.")
+    
+    return final_proxies
 
 def solve_cf_if_present(sb: BaseCase, verbose: bool = False, timeout: int = 7):
     if turnstile.is_turnstile_challenge_present(sb, timeout):
