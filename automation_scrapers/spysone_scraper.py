@@ -617,9 +617,8 @@ def _uc_gui_click_captcha(
             sb_config._saved_cf_x_y = (x, y)
             if not __is_cdp_swap_needed(driver):
                 if driver.is_element_present(".footer .clearfix .ray-id"):
-                    driver.uc_open_with_disconnect(
-                        driver.get_current_url(), 3.8
-                    )
+                    print("driver.uc_open_with_disconnect(driver.get_current_url(), 3.8) would've executed")
+                    # driver.uc_open_with_disconnect(driver.get_current_url(), 3.8)
                 else:
                     driver.disconnect()
             with suppress(Exception):
@@ -670,13 +669,15 @@ def _uc_gui_click_captcha(
                     driver.switch_to.parent_frame(checkbox_success)
                     return
             if blind:
-                driver.uc_open_with_disconnect(driver.get_current_url(), 3.8)
+                print("driver.uc_open_with_disconnect(driver.get_current_url(), 3.8)")
+                # driver.uc_open_with_disconnect(driver.get_current_url(), 3.8)
                 if __is_cdp_swap_needed(driver) and _on_a_captcha_page(driver):
                     _uc_gui_click_x_y(driver, x, y, timeframe=0.32)
                 else:
                     time.sleep(0.1)
             else:
-                driver.uc_open_with_reconnect(driver.get_current_url(), 3.8)
+                print("driver.uc_open_with_reconnect(driver.get_current_url(), 3.8)")
+                # driver.uc_open_with_reconnect(driver.get_current_url(), 3.8)
                 if _on_a_captcha_page(driver):
                     driver.disconnect()
                     _uc_gui_click_x_y(driver, x, y, timeframe=0.32)
