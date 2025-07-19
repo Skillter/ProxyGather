@@ -70,27 +70,48 @@ def _extract_and_deobfuscate(sb: BaseCase, verbose: bool) -> Set[str]:
             port_script_content = port_script_element.get_attribute('innerHTML')
             if verbose: print(f"[DEBUG] Row {i+1}: Found port script content for IP {ip}: {port_script_content.strip()}")
 
-            # 7. Extract all XOR expressions and concatenate them to form the port
-            # Pattern matches: (var1 ^ var2) expressions
-            xor_expressions = re.findall(r'\(([^)]+\^[^)]+)\)', port_script_content)
-            
-            if not xor_expressions:
-                if verbose: print(f"[DEBUG] Row {i+1}: Could not find port calculation expressions for IP {ip}")
+            # 7. Extract all XOR expressions from the document.write content
+            # The pattern is: document.write("..."+expression1+expression2+...)
+            write_match = re.search(r'document\.write\(".*?"\+(.+)\)', port_script_content)
+            if not write_match:
+                if verbose: print(f"[DEBUG] Row {i+1}: Could not find document.write pattern for IP {ip}")
                 continue
             
-            # Build JavaScript to evaluate all XOR expressions and concatenate them
-            port_calc_js = "return String(" + " + String(".join(xor_expressions) + ")" * len(xor_expressions)
+            expressions_part = write_match.group(1)
+            if verbose: print(f"[DEBUG] Row {i+1}: Extracted expressions part: {expressions_part}")
             
-            if verbose: print(f"[DEBUG] Row {i+1}: Executing port script for IP {ip}: `{port_calc_js}`")
+            # Extract individual XOR expressions - they are in parentheses
+            xor_expressions = re.findall(r'\(([^)]+)\)', expressions_part)
             
-            port = sb.execute_script(port_calc_js)
+            if not xor_expressions:
+                if verbose: print(f"[DEBUG] Row {i+1}: No XOR expressions found for IP {ip}")
+                continue
             
-            if ip and port:
-                proxy_str = f"{ip}:{port}"
-                if verbose: print(f"[DEBUG] Row {i+1}: Successfully deobfuscated proxy: {proxy_str}")
-                found_proxies.add(proxy_str)
+            if verbose: print(f"[DEBUG] Row {i+1}: Found {len(xor_expressions)} XOR expressions: {xor_expressions}")
+            
+            # Evaluate each XOR expression and concatenate as strings
+            port_parts = []
+            for expr in xor_expressions:
+                try:
+                    # Evaluate the XOR expression
+                    result = sb.execute_script(f"return ({expr})")
+                    port_parts.append(str(result))
+                    if verbose: print(f"[DEBUG] Row {i+1}: Expression '{expr}' evaluated to: {result}")
+                except Exception as e:
+                    if verbose: print(f"[DEBUG] Row {i+1}: Failed to evaluate expression '{expr}': {e}")
+                    break
+            
+            if len(port_parts) == len(xor_expressions):  # All parts evaluated successfully
+                port = ''.join(port_parts)
+                
+                if ip and port and port.isdigit():
+                    proxy_str = f"{ip}:{port}"
+                    if verbose: print(f"[DEBUG] Row {i+1}: Successfully deobfuscated proxy: {proxy_str}")
+                    found_proxies.add(proxy_str)
+                else:
+                    if verbose: print(f"[DEBUG] Row {i+1}: Invalid port '{port}' for IP {ip}")
             else:
-                if verbose: print(f"[DEBUG] Row {i+1}: Deobfuscation for IP {ip} resulted in an empty or invalid port: '{port}'")
+                if verbose: print(f"[DEBUG] Row {i+1}: Failed to evaluate all port parts for IP {ip}")
 
         except Exception as e:
             if verbose: print(f"[DEBUG] Row {i+1}: Skipped due to an error during processing: {e}")
