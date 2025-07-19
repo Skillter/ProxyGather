@@ -101,7 +101,7 @@ def main():
     }
     
     AUTOMATION_SCRAPER_NAMES = ['OpenProxyList', 'Webshare', 'Hide.mn', 'Spys.one']
-    HEADFUL_SCRAPERS = ['Hide.mn', 'Webshare','Spys.one']
+    HEADFUL_SCRAPERS = ['Hide.mn', 'Webshare', 'Spys.one']
     general_scraper_name = 'Websites'
     all_scraper_names = sorted(list(all_scraper_tasks.keys()) + [general_scraper_name])
 
