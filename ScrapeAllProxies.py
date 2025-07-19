@@ -5,7 +5,7 @@ import argparse
 import re
 import shutil
 import subprocess
-from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Dict, Union, Tuple
 from seleniumbase import SB
 
@@ -17,8 +17,8 @@ from scrapers.checkerproxy_scraper import scrape_checkerproxy_archive
 from scrapers.proxylistorg_scraper import scrape_from_proxylistorg
 from scrapers.xseo_scraper import scrape_from_xseo
 from scrapers.gologin_scraper import scrape_from_gologin_api
-from scrapers.spysone_scraper import scrape_from_spysone
 from scrapers.proxyhttp_scraper import scrape_from_proxyhttp
+from automation_scrapers.spysone_scraper import scrape_from_spysone
 from automation_scrapers.openproxylist_scraper import scrape_from_openproxylist
 from automation_scrapers.webshare_scraper import scrape_from_webshare
 from automation_scrapers.hidemn_scraper import scrape_from_hidemn
@@ -101,7 +101,7 @@ def main():
     }
     
     AUTOMATION_SCRAPER_NAMES = ['OpenProxyList', 'Webshare', 'Hide.mn', 'Spys.one']
-    HEADFUL_SCRAPERS = ['Hide.mn', 'Webshare']
+    HEADFUL_SCRAPERS = ['Hide.mn', 'Webshare','Spys.one']
     general_scraper_name = 'Websites'
     all_scraper_names = sorted(list(all_scraper_tasks.keys()) + [general_scraper_name])
 
@@ -162,7 +162,6 @@ def main():
     all_futures = []
     future_to_scraper = {}
 
-    # Use a list of executors to manage them easily
     executors = []
 
     if normal_tasks:
@@ -175,8 +174,8 @@ def main():
             all_futures.append(future)
 
     if headless_automation_tasks:
-        print(f"--- Submitting {len(headless_automation_tasks)} headless automation scraper(s) using a ProcessPool...")
-        executor = ProcessPoolExecutor(max_workers=args.automation_threads)
+        print(f"--- Submitting {len(headless_automation_tasks)} headless automation scraper(s) using a ThreadPool...")
+        executor = ThreadPoolExecutor(max_workers=args.automation_threads, thread_name_prefix='HeadlessAutomation')
         executors.append(executor)
         for name, func in headless_automation_tasks.items():
             future = executor.submit(run_automation_task, name, func, args.verbose, is_headful=False)
@@ -184,8 +183,8 @@ def main():
             all_futures.append(future)
 
     if headful_automation_tasks:
-        print(f"--- Submitting {len(headful_automation_tasks)} headful automation scraper(s) sequentially using a ProcessPool (1 worker)...")
-        executor = ProcessPoolExecutor(max_workers=1)
+        print(f"--- Submitting {len(headful_automation_tasks)} headful automation scraper(s) sequentially using a ThreadPool (1 worker)...")
+        executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix='HeadfulAutomation')
         executors.append(executor)
         for name, func in headful_automation_tasks.items():
             future = executor.submit(run_automation_task, name, func, args.verbose, is_headful=True)
