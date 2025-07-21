@@ -247,12 +247,13 @@ def wait_for_turnstile_completion(sb: BaseCase, max_wait: int = 30) -> bool:
 # --- Edited source code of SeleniumBase ---
 # --- With removed page reload, to handle POST requests correctly ---
 def _uc_gui_click_captcha(
-    driver,
+    sb: BaseCase,
     frame="iframe",
     retry=False,
     blind=False,
     ctype=None,
 ):
+    driver = sb.driver
     cdp_mode_on_at_start = __is_cdp_swap_needed(driver)
     _on_a_captcha_page = None
     if ctype == "cf_t":
@@ -592,9 +593,9 @@ def _uc_gui_click_captcha(
             driver.reconnect(reconnect_time)
 
 
-def uc_gui_click_captcha(driver, frame="iframe", retry=False, blind=False):
+def uc_gui_click_captcha(sb: BaseCase, frame="iframe", retry=False, blind=False):
     _uc_gui_click_captcha(
-        driver,
+        sb,
         frame=frame,
         retry=retry,
         blind=blind,
