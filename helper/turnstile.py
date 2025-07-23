@@ -246,6 +246,7 @@ def wait_for_turnstile_completion(sb: BaseCase, max_wait: int = 30) -> bool:
 
 # --- Edited source code of SeleniumBase ---
 # --- With removed page reload, to handle POST requests correctly ---
+# nevermind, supposedly turnstile detects position checking without a reload 
 def _uc_gui_click_captcha(
     sb: BaseCase,
     frame="iframe",
