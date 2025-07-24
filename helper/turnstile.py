@@ -45,13 +45,22 @@ def is_turnstile_challenge_present(sb: BaseCase, timeout: int = 5) -> bool:
         'cloudflare-app',
     ]
     
-    # Check for any of the selectors
-    for selector in turnstile_selectors:
-        try:
-            if sb.is_element_present(selector, timeout=0.5):
-                return True
-        except:
-            continue
+    # Combine selectors for a single, efficient check
+    combined_selector = ", ".join(turnstile_selectors)
+    
+    try:
+        # Wait up to 'timeout' seconds for ANY of the challenge elements to appear
+        if sb.is_element_present(combined_selector, by="css selector", timeout=timeout):
+            return True
+    except Exception:
+        # If combined selector fails (e.g., due to complex/invalid CSS),
+        # fall back to individual checks. This is slower but more robust.
+        for selector in turnstile_selectors:
+            try:
+                if sb.is_element_present(selector, timeout=0.2): # Quick check
+                    return True
+            except Exception:
+                continue
     
     # Check for Turnstile scripts in the page
     try:
@@ -602,5 +611,3 @@ def uc_gui_click_captcha(sb: BaseCase, frame="iframe", retry=False, blind=False)
         blind=blind,
         ctype=None,
     )
-
-
