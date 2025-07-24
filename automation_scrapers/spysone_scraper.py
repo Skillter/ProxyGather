@@ -36,7 +36,7 @@ def _extract_proxies_from_html(html_content: str, verbose: bool = False) -> Set[
     return proxies
 
 def _handle_turnstile(sb: BaseCase, verbose: bool, callable_after_page_reload: Callable=None):
-    if turnstile.is_turnstile_challenge_present(sb, 10): #5
+    if turnstile.is_turnstile_present(sb, 10): #5
         if verbose: print("[INFO] Spys.one: Cloudflare challenge detected. Solving...")
         _uc_gui_click_captcha(sb, callable_after_page_reload=callable_after_page_reload)
         # sb.uc_gui_click_x_y(240, 330) # This could work, but is more prone for different setups/less stable
@@ -85,6 +85,7 @@ def scrape_from_spysone(sb: BaseCase, verbose: bool = False) -> List[str]:
             time.sleep(0.5)
             sb.find_element("a[href='/en/free-proxy-list/']", timeout=6).click()
             time.sleep(1)
+            sb.ad_block()
             sb.js_click('#dismiss-button', all_matches=True, timeout=3)
             # sb.find_element("#dismiss-button", timeout=2).click()
             time.sleep(0.5)
@@ -120,16 +121,17 @@ def scrape_from_spysone(sb: BaseCase, verbose: bool = False) -> List[str]:
                 #     });
                 # """)
                 
-
+                
                 for dropdown_id, value in config.items():
                     
                     def callable_after_page_reload():
+                        sb.ad_block()
                         sb.get_element(f'#{dropdown_id}', timeout=5).click()
                         sb.select_option_by_value(f'#{dropdown_id}', value, timeout=5)
                         print(f"[INFO] Spysone: Applying dropdown selection: {dropdown_id} -> {value}")
                         time.sleep(0.5)  # Small delay for JS to react
                     callable_after_page_reload()
-                    time.sleep(3)
+                    # time.sleep(3)
                     _handle_turnstile(sb, verbose=verbose, callable_after_page_reload=callable_after_page_reload)
 
 
@@ -149,6 +151,11 @@ def scrape_from_spysone(sb: BaseCase, verbose: bool = False) -> List[str]:
                 # Extract proxies from current page
                 page_content = sb.get_page_source()
                 new_proxies = _extract_proxies_from_html(page_content, verbose)
+                if len(new_proxies) <= 0:
+                    filename = "spysone-error-no-proxies.html"
+                    print("[ERROR] Spy.one: No proxies found on the page, assuming something went wrong. Saving the page content to " + filename)
+                    with open(filename, 'w', encoding='utf-8') as f:
+                        f.write(page_content)
                 
                 # Calculate newly found unique proxies
                 before_count = len(all_proxies)
@@ -469,9 +476,12 @@ def _uc_gui_click_captcha(
                     # After a reload we lose the POST payload, so we need to send the payload again, before we click the captcha (otherwise turnstile doesn't show up)
                     print("callable_after_page_reload() starts now")
                     if callable_after_page_reload:
-                        print("[INFO] Spys.one: Re-applying action after captcha solver reloaded page.")
+                        print("[DEBUG] Spys.one: Re-applying action after captcha solver reloaded page.")
                         callable_after_page_reload()
                     print("callable_after_page_reload() ends now")
+                    
+                    # We need to wait for turnstile to reload and become ready again
+                    sb.sleep(6)
                     
                 else:
                     driver.disconnect()
