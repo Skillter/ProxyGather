@@ -1,6 +1,6 @@
 import time
 import re
-from typing import List, Set
+from typing import Callable, List, Set, Any, TypeVar
 from seleniumbase import BaseCase
 import helper.turnstile as turnstile
 import fasteners
@@ -35,6 +35,14 @@ def _extract_proxies_from_html(html_content: str, verbose: bool = False) -> Set[
     
     return proxies
 
+def _handle_turnstile(sb: BaseCase, verbose: bool, callable_after_page_reload: Callable=None):
+    if turnstile.is_turnstile_challenge_present(sb, 10): #5
+        if verbose: print("[INFO] Spys.one: Cloudflare challenge detected. Solving...")
+        _uc_gui_click_captcha(sb, callable_after_page_reload=callable_after_page_reload)
+        # sb.uc_gui_click_x_y(240, 330) # This could work, but is more prone for different setups/less stable
+        
+        sb.wait_for_element_present('body > table:nth-child(3)', timeout=20)
+        if verbose: print("[SUCCESS] Spys.one: Challenge solved.")
 
 def scrape_from_spysone(sb: BaseCase, verbose: bool = False) -> List[str]:
     """
@@ -53,16 +61,12 @@ def scrape_from_spysone(sb: BaseCase, verbose: bool = False) -> List[str]:
         # Navigate to the main page
         if verbose: print(f"[INFO] Spys.one: Navigating to {base_url}...")
         sb.open(base_url)
-            
+        sb.ad_block()
+        
         # time.sleep(100)
         # Check and solve initial turnstile challenge
-        if turnstile.is_turnstile_challenge_present(sb, 5):
-            if verbose: print("[INFO] Spys.one: Cloudflare challenge detected. Solving...")
-            turnstile.uc_gui_click_captcha(sb)
-            # sb.uc_gui_handle_cf(sb)
-            sb.wait_for_element_present('body > table:nth-child(3)', timeout=20)
-            if verbose: print("[SUCCESS] Spys.one: Challenge solved.")
-        
+        _handle_turnstile(sb, verbose)
+
         try:
             time.sleep(0.5)
             sb.find_element("button.fc-primary-button[aria-label='Consent']", timeout=6).click()
@@ -118,10 +122,16 @@ def scrape_from_spysone(sb: BaseCase, verbose: bool = False) -> List[str]:
                 
 
                 for dropdown_id, value in config.items():
-                    sb.get_element(f'#{dropdown_id}', timeout=5).click()
-                    sb.select_option_by_value(f'#{dropdown_id}', value, timeout=5)
-                    time.sleep(2)  # Small delay between selections
-                
+                    
+                    def callable_after_page_reload():
+                        print(f'{dropdown_id} has been pressed')
+                        sb.get_element(f'#{dropdown_id}', timeout=5).click()
+                        sb.select_option_by_value(f'#{dropdown_id}', value, timeout=5)
+                        time.sleep(0.5)  # Small delay between selections
+                    callable_after_page_reload()
+                    time.sleep(3)
+                    _handle_turnstile(sb, verbose, callable_after_page_reload())
+
 
                 # sb.execute_script("""
                 #     var forms = document.querySelectorAll('form');
@@ -134,13 +144,7 @@ def scrape_from_spysone(sb: BaseCase, verbose: bool = False) -> List[str]:
                 time.sleep(3)
                 
                 # Check for turnstile after form submission
-                if turnstile.is_turnstile_challenge_present(sb, 5):
-                    if verbose: print("[INFO] Spys.one: Cloudflare challenge detected. Solving...")
-                    # turnstile.uc_gui_click_captcha(sb)
-                    sb.uc_gui_click_x_y(240, 330)
-                    
-                    sb.wait_for_element_present('body > table:nth-child(3)', timeout=20)
-                    if verbose: print("[SUCCESS] Spys.one: Challenge solved.")
+
                 
                 # Extract proxies from current page
                 page_content = sb.get_page_source()
@@ -184,6 +188,7 @@ def _uc_gui_click_captcha(
     retry=False,
     blind=False,
     ctype=None,
+    callable_after_page_reload: Callable=None
 ):
     driver = sb.driver
     cdp_mode_on_at_start = __is_cdp_swap_needed(driver)
@@ -459,6 +464,14 @@ def _uc_gui_click_captcha(
                 if driver.is_element_present(".footer .clearfix .ray-id"):
                     print("driver.uc_open_with_disconnect(driver.get_current_url(), 3.8)")
                     driver.uc_open_with_disconnect(driver.get_current_url(), 3.8)
+                    
+                    # --- The fix for spys.one starts here ---
+                    # After a reload we lose the POST payload, so we need to send the payload again, before we click the captcha (otherwise turnstile doesn't show up)
+                    
+                    print("callable_after_page_reload() starts now")
+                    callable_after_page_reload()
+                    print("callable_after_page_reload() ends now")
+                    
                 else:
                     driver.disconnect()
             with suppress(Exception):
