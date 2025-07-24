@@ -65,7 +65,7 @@ def scrape_from_spysone(sb: BaseCase, verbose: bool = False) -> List[str]:
         
         # time.sleep(100)
         # Check and solve initial turnstile challenge
-        _handle_turnstile(sb, verbose)
+        _handle_turnstile(sb, verbose=verbose)
 
         try:
             time.sleep(0.5)
@@ -126,11 +126,11 @@ def scrape_from_spysone(sb: BaseCase, verbose: bool = False) -> List[str]:
                     def callable_after_page_reload():
                         sb.get_element(f'#{dropdown_id}', timeout=5).click()
                         sb.select_option_by_value(f'#{dropdown_id}', value, timeout=5)
-                        if verbose: print(f"[DEBUG] Applying dropdown selection: {dropdown_id} -> {value}")
+                        print(f"[INFO] Spysone: Applying dropdown selection: {dropdown_id} -> {value}")
                         time.sleep(0.5)  # Small delay for JS to react
                     callable_after_page_reload()
                     time.sleep(3)
-                    _handle_turnstile(sb, verbose, callable_after_page_reload())
+                    _handle_turnstile(sb, verbose=verbose, callable_after_page_reload=callable_after_page_reload)
 
 
                 # sb.execute_script("""
@@ -469,7 +469,7 @@ def _uc_gui_click_captcha(
                     # After a reload we lose the POST payload, so we need to send the payload again, before we click the captcha (otherwise turnstile doesn't show up)
                     print("callable_after_page_reload() starts now")
                     if callable_after_page_reload:
-                        if verbose: print("[DEBUG] Spys.one: Re-applying action after captcha solver reloaded page.")
+                        print("[INFO] Spys.one: Re-applying action after captcha solver reloaded page.")
                         callable_after_page_reload()
                     print("callable_after_page_reload() ends now")
                     
