@@ -14,7 +14,7 @@ from seleniumbase.core.browser_launcher import _uc_gui_click_x_y, __is_cdp_swap_
 
 
 
-def is_turnstile_challenge_present(sb: BaseCase, timeout: int = 5) -> bool:
+def is_turnstile_present(sb: BaseCase, timeout: int = 5) -> bool:
     """
     Comprehensive detection of Cloudflare Turnstile challenges.
     Checks multiple indicators including iframes, scripts, DOM elements, and JS variables.
@@ -220,7 +220,7 @@ def wait_for_turnstile_completion(sb: BaseCase, max_wait: int = 30) -> bool:
     
     while time.time() - start_time < max_wait:
         # Check if we're still on a challenge page
-        if not is_turnstile_challenge_present(sb, timeout=2):
+        if not is_turnstile_present(sb, timeout=2):
             # Additional check: ensure we've navigated away from challenge
             try:
                 current_url = sb.get_current_url()
