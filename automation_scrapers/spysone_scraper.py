@@ -124,10 +124,10 @@ def scrape_from_spysone(sb: BaseCase, verbose: bool = False) -> List[str]:
                 for dropdown_id, value in config.items():
                     
                     def callable_after_page_reload():
-                        print(f'{dropdown_id} has been pressed')
                         sb.get_element(f'#{dropdown_id}', timeout=5).click()
                         sb.select_option_by_value(f'#{dropdown_id}', value, timeout=5)
-                        time.sleep(0.5)  # Small delay between selections
+                        if verbose: print(f"[DEBUG] Applying dropdown selection: {dropdown_id} -> {value}")
+                        time.sleep(0.5)  # Small delay for JS to react
                     callable_after_page_reload()
                     time.sleep(3)
                     _handle_turnstile(sb, verbose, callable_after_page_reload())
@@ -141,10 +141,10 @@ def scrape_from_spysone(sb: BaseCase, verbose: bool = False) -> List[str]:
                 # """)
                 
                 # Wait for page load
-                time.sleep(3)
                 
                 # Check for turnstile after form submission
 
+                sb.wait_for_element_present('body > table:nth-child(3)', timeout=20)
                 
                 # Extract proxies from current page
                 page_content = sb.get_page_source()
@@ -467,10 +467,12 @@ def _uc_gui_click_captcha(
                     
                     # --- The fix for spys.one starts here ---
                     # After a reload we lose the POST payload, so we need to send the payload again, before we click the captcha (otherwise turnstile doesn't show up)
-                    
                     print("callable_after_page_reload() starts now")
-                    callable_after_page_reload()
-                    print("callable_after_page_reload() ends now")
+                    if callable_after_page_reload:
+                        if sb.get_current_url() == "about:blank":
+                            sb.reconnect(1)
+                        if verbose: print("[DEBUG] Spys.one: Re-applying action after captcha solver reloaded page.")
+                        callable_after_page_reload()
                     
                 else:
                     driver.disconnect()
