@@ -13,42 +13,52 @@ from seleniumbase.fixtures import js_utils
 from seleniumbase.fixtures import page_actions
 from seleniumbase.core.browser_launcher import _uc_gui_click_x_y, __is_cdp_swap_needed, _on_a_cf_turnstile_page, _on_a_g_recaptcha_page, IS_LINUX, get_gui_element_position, IS_WINDOWS, get_configured_pyautogui, install_pyautogui_if_missing  
 
-
 def _extract_proxies_from_html(sb: BaseCase, verbose: bool = False) -> Set[str]:
     """
-    Extracts proxies from spys.one.
-    First, it attempts a fast regex-based extraction on the raw HTML.
-    If that fails, it falls back to a more robust method of reading the
-    rendered text from the table elements.
+    Extracts proxies from spys.one using a three-tiered approach.
+    1. Tries the original fast regex.
+    2. Tries a new regex for a known alternative HTML structure.
+    3. Falls back to a robust but slower rendered-text parsing method.
     """
     proxies = set()
-    
-    # --- Primary Method: Fast Regex on Raw HTML ---
-    if verbose:
-        print("[DEBUG] Spys.one: Attempting primary extraction method (Regex)...")
-    
     html_content = sb.get_page_source()
-    # This is the original regex that might fail if the page uses JS to render the port differently.
-    pattern = r'<font class="spy14">(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})<script>.*?</script>:(\d+)</font>'
-    
+
+    # --- Attempt 1: Original Fast Regex ---
+    if verbose:
+        print("[DEBUG] Spys.one: Attempting primary extraction method (Original Regex)...")
+    pattern_original = r'<font class="spy14">(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})<script>.*?</script>:(\d+)</font>'
     try:
-        matches = re.findall(pattern, html_content, re.DOTALL)
-        for ip, port in matches:
-            proxies.add(f"{ip}:{port}")
+        matches = re.findall(pattern_original, html_content, re.DOTALL)
+        if matches:
+            for ip, port in matches:
+                proxies.add(f"{ip}:{port}")
+            if verbose:
+                print(f"[DEBUG] Spys.one: Primary method successful. Found {len(proxies)} proxies.")
+            return proxies
     except Exception as e:
         if verbose:
-            print(f"[DEBUG] Spys.one: Regex method encountered an error: {e}")
-        proxies.clear() # Ensure set is empty on error
+            print(f"[DEBUG] Spys.one: Original Regex method encountered an error: {e}")
 
-    if proxies:
-        if verbose:
-            print(f"[DEBUG] Spys.one: Primary method successful. Found {len(proxies)} proxies.")
-        return proxies
-
-    # --- Fallback Method: Robust Rendered Text Parsing ---
+    # --- Attempt 2: New Regex for the alternative structure ---
     if verbose:
-        print("[INFO] Spys.one: Primary method found no proxies. Falling back to secondary method (rendered text)...")
-    
+        print("[DEBUG] Spys.one: Original Regex failed. Attempting secondary method (New Regex)...")
+    # This pattern matches the structure: <font>IP<script/> <font>:</font>PORT</font>
+    pattern_new = r'<font class="spy14">(\d{1,3}(?:\.\d{1,3}){3})<script.*?</script>\s*<font class="spy2">:</font>(\d+)</font>'
+    try:
+        matches = re.findall(pattern_new, html_content, re.DOTALL)
+        if matches:
+            for ip, port in matches:
+                proxies.add(f"{ip}:{port}")
+            if verbose:
+                print(f"[DEBUG] Spys.one: Secondary (New Regex) method successful. Found {len(proxies)} proxies.")
+            return proxies
+    except Exception as e:
+        if verbose:
+            print(f"[DEBUG] Spys.one: New Regex method encountered an error: {e}")
+
+    # --- Attempt 3 (Fallback): Robust Rendered Text Parsing ---
+    if verbose:
+        print("[INFO] Spys.one: Both Regex methods failed. Falling back to tertiary method (rendered text)...")
     try:
         proxy_rows = sb.find_elements("tr.spy1x, tr.spy1xx")
         if not proxy_rows and verbose:
@@ -56,11 +66,8 @@ def _extract_proxies_from_html(sb: BaseCase, verbose: bool = False) -> Set[str]:
 
         for row in proxy_rows:
             try:
-                # The first cell in the row contains the IP:PORT string
                 first_cell = row.find_element("css selector", "td:first-child")
                 proxy_string = first_cell.text.strip()
-                
-                # Validate and add
                 if ":" in proxy_string and "." in proxy_string:
                     proxies.add(proxy_string)
             except Exception as e_inner:
@@ -76,7 +83,6 @@ def _extract_proxies_from_html(sb: BaseCase, verbose: bool = False) -> Set[str]:
             print(f"[ERROR] Spys.one: The fallback extraction method failed critically. Error: {e}")
 
     return proxies
-
 def _handle_turnstile(sb: BaseCase, verbose: bool, callable_after_page_reload: Callable=None):
     if turnstile.is_turnstile_present(sb, 10): #5
         if verbose: print("[INFO] Spys.one: Cloudflare challenge detected. Solving...")
