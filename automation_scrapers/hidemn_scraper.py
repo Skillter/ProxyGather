@@ -20,7 +20,7 @@ def _solve_challenge_and_get_creds(sb: BaseCase, url: str, verbose: bool) -> dic
     sb.open(url)
     
     try:
-        if turnstile.is_turnstile_challenge_present(sb, 5):
+        if turnstile.is_turnstile_present(sb, 5):
             if verbose:
                 print("[INFO] Hide.mn: Cloudflare challenge detected. Attempting to solve...")
             sb.uc_gui_click_captcha()
