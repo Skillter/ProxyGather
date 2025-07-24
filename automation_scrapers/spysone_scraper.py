@@ -469,10 +469,9 @@ def _uc_gui_click_captcha(
                     # After a reload we lose the POST payload, so we need to send the payload again, before we click the captcha (otherwise turnstile doesn't show up)
                     print("callable_after_page_reload() starts now")
                     if callable_after_page_reload:
-                        if sb.get_current_url() == "about:blank":
-                            sb.reconnect(1)
                         if verbose: print("[DEBUG] Spys.one: Re-applying action after captcha solver reloaded page.")
                         callable_after_page_reload()
+                    print("callable_after_page_reload() ends now")
                     
                 else:
                     driver.disconnect()
