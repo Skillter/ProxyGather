@@ -14,25 +14,67 @@ from seleniumbase.fixtures import page_actions
 from seleniumbase.core.browser_launcher import _uc_gui_click_x_y, __is_cdp_swap_needed, _on_a_cf_turnstile_page, _on_a_g_recaptcha_page, IS_LINUX, get_gui_element_position, IS_WINDOWS, get_configured_pyautogui, install_pyautogui_if_missing  
 
 
-def _extract_proxies_from_html(html_content: str, verbose: bool = False) -> Set[str]:
+def _extract_proxies_from_html(sb: BaseCase, verbose: bool = False) -> Set[str]:
     """
-    Extract proxies from spys.one HTML using regex.
-    Finds patterns like: <font class="spy14">IP<script>...</script>:PORT</font>
+    Extracts proxies from spys.one.
+    First, it attempts a fast regex-based extraction on the raw HTML.
+    If that fails, it falls back to a more robust method of reading the
+    rendered text from the table elements.
     """
     proxies = set()
     
-    # Regex pattern to match IP:PORT while ignoring script blocks
+    # --- Primary Method: Fast Regex on Raw HTML ---
+    if verbose:
+        print("[DEBUG] Spys.one: Attempting primary extraction method (Regex)...")
+    
+    html_content = sb.get_page_source()
+    # This is the original regex that might fail if the page uses JS to render the port differently.
     pattern = r'<font class="spy14">(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})<script>.*?</script>:(\d+)</font>'
     
-    matches = re.findall(pattern, html_content, re.DOTALL)
-    
-    for ip, port in matches:
-        proxy = f"{ip}:{port}"
-        proxies.add(proxy)
-    
+    try:
+        matches = re.findall(pattern, html_content, re.DOTALL)
+        for ip, port in matches:
+            proxies.add(f"{ip}:{port}")
+    except Exception as e:
+        if verbose:
+            print(f"[DEBUG] Spys.one: Regex method encountered an error: {e}")
+        proxies.clear() # Ensure set is empty on error
+
+    if proxies:
+        if verbose:
+            print(f"[DEBUG] Spys.one: Primary method successful. Found {len(proxies)} proxies.")
+        return proxies
+
+    # --- Fallback Method: Robust Rendered Text Parsing ---
     if verbose:
-        print(f"[DEBUG] Extracted {len(proxies)} proxies from HTML")
+        print("[INFO] Spys.one: Primary method found no proxies. Falling back to secondary method (rendered text)...")
     
+    try:
+        proxy_rows = sb.find_elements("tr.spy1x, tr.spy1xx")
+        if not proxy_rows and verbose:
+            print("[WARN] Spys.one Fallback: Could not find any proxy table rows (tr.spy1x, tr.spy1xx).")
+
+        for row in proxy_rows:
+            try:
+                # The first cell in the row contains the IP:PORT string
+                first_cell = row.find_element("css selector", "td:first-child")
+                proxy_string = first_cell.text.strip()
+                
+                # Validate and add
+                if ":" in proxy_string and "." in proxy_string:
+                    proxies.add(proxy_string)
+            except Exception as e_inner:
+                if verbose:
+                    print(f"[DEBUG] Spys.one Fallback: Could not parse a row. Error: {e_inner}")
+                continue
+        
+        if verbose:
+            print(f"[DEBUG] Spys.one: Fallback method found {len(proxies)} proxies.")
+    
+    except Exception as e:
+        if verbose:
+            print(f"[ERROR] Spys.one: The fallback extraction method failed critically. Error: {e}")
+
     return proxies
 
 def _handle_turnstile(sb: BaseCase, verbose: bool, callable_after_page_reload: Callable=None):
@@ -75,9 +117,8 @@ def scrape_from_spysone(sb: BaseCase, verbose: bool = False) -> List[str]:
             print(e)
 
         
-        # Extract proxies from initial page
-        page_content = sb.get_page_source()
-        initial_proxies = _extract_proxies_from_html(page_content, verbose)
+        # Extract proxies from initial page using the new combined method
+        initial_proxies = _extract_proxies_from_html(sb, verbose)
         all_proxies.update(initial_proxies)
         if verbose: print(f"[INFO] Spys.one: Found {len(initial_proxies)} proxies on initial page.")
         
@@ -149,13 +190,12 @@ def scrape_from_spysone(sb: BaseCase, verbose: bool = False) -> List[str]:
                 sb.wait_for_element_present('body > table:nth-child(3)', timeout=20)
                 
                 # Extract proxies from current page
-                page_content = sb.get_page_source()
-                new_proxies = _extract_proxies_from_html(page_content, verbose)
+                new_proxies = _extract_proxies_from_html(sb, verbose)
                 if len(new_proxies) <= 0:
                     filename = "spysone-error-no-proxies.html"
                     print("[ERROR] Spy.one: No proxies found on the page, assuming something went wrong. Saving the page content to " + filename)
                     with open(filename, 'w', encoding='utf-8') as f:
-                        f.write(page_content)
+                        f.write(sb.get_page_source())
                 
                 # Calculate newly found unique proxies
                 before_count = len(all_proxies)
