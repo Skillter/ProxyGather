@@ -58,6 +58,8 @@ Getting up and running is fast and simple. *Tested on Python 3.12.9*
     The results are in the same folder.
     ```bash
     python ScrapeAllProxies.py
+    ```
+    ```bash
     python CheckProxies.py
     ```
 
@@ -91,9 +93,9 @@ python CheckProxies.py --input proxies/scraped.txt --output proxies/working.txt 
 
 *   `--input`: The input file(s) containing the proxies to check. You can use wildcards. (Default: `scraped-proxies.txt`)
 *   `--output`: The base name for the output files. The script will create separate files for each protocol (e.g. `working-http.txt`, `working-socks5.txt`).
-*   `--threads`: The number of concurrent threads to use for checking. (Default: 100)
-*   `--timeout`: The timeout for each proxy check (e.g. `8s`, `500ms`). (Default: `8s`)
-*   `-v`, `--verbose`: Enable detailed logging for failed checks.
+*   `--threads`: The number of concurrent threads to use for checking. (Default: 500)
+*   `--timeout`: The timeout for each proxy check (e.g. `8s`, `500ms`). (Default: `6s`)
+*   `-v`, `--verbose`: Enable detailed logging
 *   `--prepend-protocol`: Add the protocol prefix (e.g. "http://", "socks5://") to the start of each line
 
 ## Adding Your Own Sites
