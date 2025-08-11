@@ -37,10 +37,20 @@ class ProxyChecker:
     # --- A lot of proxies don't pass Google because google sees abused proxies ---
     # --- Mozilla either doesn't check or is easier to pass ---
     # --- Google will yield better quality, less abused proxies, but lesser amount ---
+    
+    # --- Liveness check URL changed to a more appropriate, lightweight target ---
+    # Changed to httpbin.org for a less intrusive and more lightweight solution
+    # Other good, lightweight alternatives include:
+    # - "http://detectportal.firefox.com/success.txt" (String: "success")
+    # - "https://api.ipify.org/" (String: your IP but that's harder to check reliably)
+    # - "http://checkip.amazonaws.com/" (String: your IP)
+    
     # LIVENESS_CHECK_URL = "http://www.google.com/"
     # LIVENESS_CHECK_STRING = "Google"
-    LIVENESS_CHECK_URL = "https://addons.mozilla.org/en-US/firefox/"
-    LIVENESS_CHECK_STRING = "Firefox"
+    # LIVENESS_CHECK_URL = "https://addons.mozilla.org/en-US/firefox/"
+    # LIVENESS_CHECK_STRING = "Firefox"
+    LIVENESS_CHECK_URL = "http://httpbin.org/get"
+    LIVENESS_CHECK_STRING = '"origin"'
 
     def __init__(self, timeout: float = 10.0, verbose: bool = False):
         self.timeout_ms = int(timeout * 1000)
@@ -145,7 +155,7 @@ class ProxyChecker:
                     is_live = True
                     break
                 elif self.verbose:
-                    print(f"\n[HIJACK?] Proxy {proxy} connected to Google but returned unexpected content.")
+                    print(f"\n[HIJACK?] Proxy {proxy} connected to the liveness check URL but returned unexpected content.")
                 return False
             
             elif result is None:
@@ -154,9 +164,9 @@ class ProxyChecker:
             elif isinstance(result, int):
                 if self.verbose:
                     if result == 407:
-                        print(f"\n[AUTH FAILED] Proxy {proxy} requires a password (on Google check).")
+                        print(f"\n[AUTH FAILED] Proxy {proxy} requires a password (on liveness check).")
                     else:
-                        print(f"\n[GOOGLE FAILED] Proxy {proxy} failed liveness check, returned HTTP {result}.")
+                        print(f"\n[LIVENESS FAILED] Proxy {proxy} failed liveness check, returned HTTP {result}.")
                 return False
 
         if not is_live:
