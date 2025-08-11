@@ -1,17 +1,18 @@
 requests
-undetected-chromedriver # Old chromedriver we're trying to switch from
-nodriver # Nodriver chromedriver has problems running as admin
+# undetected-chromedriver # old chromedriver we switched from
+# nodriver # Nodriver has problems running as admin 
+# DrissionPage # We needed different implementation for turnstile solving
+seleniumbase
 asyncio
-DrissionPage
-# This is the new better chromedriver we'll use
 pycurl
 setuptools # Needed for >3.12 Python, since distutils in python has been removed
-opencv-python
+# opencv-python # Not in production; image recognition for captcha
 pyautogui
-numpy
+# numpy
 Pillow
-pynput
-pyvirtualdisplay
+# pynput
+# pyvirtualdisplay # Not in production; Maybe implement virtual screen for headful browsers on linux in the future
 # pywin32
 # gnome-screenshot
-seleniumbase
+# js2py # Could be useful for future javascript obfuscations
+# beautifulsoup4
