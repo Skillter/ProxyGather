@@ -71,6 +71,31 @@ def run_automation_task(scraper_name: str, scraper_func, verbose_flag: bool, is_
     with SB(uc=True, headed=is_headful, headless2=(not is_headful), disable_csp=True) as sb:
         return scraper_func(sb, verbose=verbose_flag)
 
+def pre_run_browser_setup():
+    """
+    Initializes and closes a browser instance to trigger the driver download
+    and setup process once, before any concurrent tasks start.
+    """
+    print("[INFO] Performing browser driver pre-flight check...")
+    try:
+        with SB(uc=True, headless2=True) as sb:
+            sb.open("about:blank")
+            # Get the path where seleniumbase stores its drivers
+            driver_executable_path = sb.driver.service.path
+            drivers_folder_path = os.path.dirname(driver_executable_path)
+            
+            # Determine the correct uc_driver filename based on OS
+            uc_driver_filename = "uc_driver.exe" if sys.platform == "win32" else "uc_driver"
+            
+            # The presence of uc_driver means it's ready.
+            if os.path.exists(os.path.join(drivers_folder_path, uc_driver_filename)):
+                print("[SUCCESS] Browser driver is ready.")
+            else:
+                print("[WARN] UC driver not found after initial check, but pre-flight check completed.")
+    except Exception as e:
+        print(f"[ERROR] A critical error occurred during browser pre-flight check: {e}")
+        print("[INFO] The script will continue, but may face issues with concurrent browser startup.")
+
 def main():
     parser = argparse.ArgumentParser(description="A powerful, multi-source proxy scraper.")
     parser.add_argument('--output', default=DEFAULT_OUTPUT_FILE, help=f"The output file for scraped proxies. Defaults to '{DEFAULT_OUTPUT_FILE}'.")
@@ -138,6 +163,8 @@ def main():
         print("[ERROR] No scrapers selected to run. Exiting.")
         sys.exit(1)
 
+    automation_tasks_present = any(name in tasks_to_run for name in AUTOMATION_SCRAPER_NAMES)
+
     if sys.platform == "linux" and not os.environ.get('DISPLAY'):
         print("[INFO] Linux/WSL detected. Checking for xvfb-run...")
         if shutil.which("xvfb-run"):
@@ -149,6 +176,9 @@ def main():
             print("\n[ERROR] xvfb-run is required for browser automation on headless Linux/WSL but is not installed.")
             print("Please install it: sudo apt-get update && sudo apt-get install -y xvfb")
             sys.exit(1)
+    
+    if automation_tasks_present:
+        pre_run_browser_setup()
 
     results = {}
     successful_general_urls = []
