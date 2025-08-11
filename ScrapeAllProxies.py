@@ -5,6 +5,7 @@ import argparse
 import re
 import shutil
 import subprocess
+import tempfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Dict, Union, Tuple
 from seleniumbase import SB
@@ -66,10 +67,21 @@ def parse_sites_file(filename: str) -> List[Tuple[str, Union[Dict, None], Union[
 def run_automation_task(scraper_name: str, scraper_func, verbose_flag: bool, is_headful: bool):
     """
     A wrapper to run a single automation scraper in its own browser instance,
-    with configurable headful/headless mode.
+    with a dedicated, temporary user profile to ensure isolation.
     """
-    with SB(uc=True, headed=is_headful, headless2=(not is_headful), disable_csp=True) as sb:
-        return scraper_func(sb, verbose=verbose_flag)
+    temp_dir = tempfile.mkdtemp()
+    try:
+        with SB(
+            uc=True,
+            headed=is_headful,
+            headless2=(not is_headful),
+            disable_csp=True,
+            user_data_dir=temp_dir
+        ) as sb:
+            return scraper_func(sb, verbose=verbose_flag)
+    finally:
+        # Ensure the temporary directory is always cleaned up
+        shutil.rmtree(temp_dir, ignore_errors=True)
 
 def pre_run_browser_setup():
     """
@@ -80,14 +92,11 @@ def pre_run_browser_setup():
     try:
         with SB(uc=True, headless2=True) as sb:
             sb.open("about:blank")
-            # Get the path where seleniumbase stores its drivers
             driver_executable_path = sb.driver.service.path
             drivers_folder_path = os.path.dirname(driver_executable_path)
             
-            # Determine the correct uc_driver filename based on OS
             uc_driver_filename = "uc_driver.exe" if sys.platform == "win32" else "uc_driver"
             
-            # The presence of uc_driver means it's ready.
             if os.path.exists(os.path.join(drivers_folder_path, uc_driver_filename)):
                 print("[SUCCESS] Browser driver is ready.")
             else:
@@ -95,6 +104,7 @@ def pre_run_browser_setup():
     except Exception as e:
         print(f"[ERROR] A critical error occurred during browser pre-flight check: {e}")
         print("[INFO] The script will continue, but may face issues with concurrent browser startup.")
+
 
 def main():
     parser = argparse.ArgumentParser(description="A powerful, multi-source proxy scraper.")
