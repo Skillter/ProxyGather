@@ -41,7 +41,7 @@ jobs:
         python ScrapeAllProxies.py --output proxies/scraped-proxies.txt --exclude Webshare --verbose
     - name: Run the proxy checker
       run: |
-        python CheckProxies.py --input proxies/scraped-proxies.txt --output proxies/working-proxies.txt --threads 3000 --timeout 2s
+        python CheckProxies.py --input proxies/scraped-proxies.txt proxies/working-proxies-all.txt --output proxies/working-proxies.txt --threads 4000 --timeout 2s
     # commit the changes
     - name: Commit and push
       uses: stefanzweifel/git-auto-commit-action@v5
