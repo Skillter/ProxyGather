@@ -6,7 +6,7 @@ import re
 import shutil
 import subprocess
 import tempfile
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError
 from typing import List, Dict, Union, Tuple
 from seleniumbase import SB
 
@@ -26,6 +26,7 @@ from automation_scrapers.hidemn_scraper import scrape_from_hidemn
 
 SITES_FILE = 'sites-to-get-proxies-from.txt'
 DEFAULT_OUTPUT_FILE = 'scraped-proxies.txt'
+INDIVIDUAL_SCRAPER_TIMEOUT = 240  # 4 minutes in seconds
 
 INVALID_IP_REGEX = re.compile(
     r"^(10\.|127\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.|169\.254\.|0\.|2(2[4-9]|3[0-9])\.|2(4[0-9]|5[0-5])\.)"
@@ -234,7 +235,7 @@ def main():
     try:
         if all_futures:
             print("\n--- Waiting for all scrapers to complete... ---")
-            for future in as_completed(all_futures):
+            for future in as_completed(all_futures, timeout=INDIVIDUAL_SCRAPER_TIMEOUT):
                 name = future_to_scraper.get(future, "Unknown")
                 try:
                     result_data = future.result()
@@ -248,9 +249,15 @@ def main():
                 except Exception as e:
                     results[name] = []
                     print(f"[ERROR] Scraper '{name}' failed: {e}")
+    except TimeoutError:
+        print(f"\n[TIMEOUT] Global scraper stall detector triggered after {INDIVIDUAL_SCRAPER_TIMEOUT} seconds.")
+        running_futures = [f for f in all_futures if not f.done()]
+        if running_futures:
+            stuck_scrapers = {future_to_scraper.get(f, "Unknown") for f in running_futures}
+            print(f"[ERROR] The following scrapers failed to complete and are likely stuck: {', '.join(stuck_scrapers)}")
     finally:
         for executor in executors:
-            executor.shutdown(wait=True)
+            executor.shutdown(wait=False, cancel_futures=True)
 
     print("\n--- Combining and processing all results ---")
     combined_proxies = {p for proxy_list in results.values() if proxy_list for p in proxy_list if p and p.strip()}
