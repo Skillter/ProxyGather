@@ -105,12 +105,12 @@ def main():
         default=None,
         help="The base name for output files (e.g., 'results/verified'). If not provided, a timestamped name will be used."
     )
-    parser.add_argument('--threads', type=int, default=100, help="Number of threads for checking proxies. Default: 100")
+    parser.add_argument('--threads', type=int, default=500, help="Number of threads for checking proxies. Default: 500")
     parser.add_argument(
         '--timeout', 
         type=str, 
-        default='8s', 
-        help="Timeout for each proxy check. E.g., '500ms', '10s', '8'. Default is 8 seconds."
+        default='6s', 
+        help="Timeout for each proxy check. E.g., '500ms', '10s', '8'. Default is 6 seconds."
     )
     parser.add_argument('--prepend-protocol', action='store_true', help="Prepend protocol to proxies in specific files.")
     parser.add_argument('-v', '--verbose', action='store_true', help="Enable detailed logging for failures and diagnostics.")
