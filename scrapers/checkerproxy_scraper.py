@@ -45,7 +45,7 @@ def scrape_checkerproxy_archive(verbose: bool = True) -> List[str]:
 
     # --- Step 1: Get the list of available dates ---
     try:
-        response = requests.get(ARCHIVE_LIST_URL, headers=HEADERS, timeout=20)
+        response = requests.get(ARCHIVE_LIST_URL, headers=HEADERS, timeout=20, verify=False)
         response.raise_for_status()
         archive_data = response.json()
 
@@ -72,7 +72,7 @@ def scrape_checkerproxy_archive(verbose: bool = True) -> List[str]:
             print(f"[INFO] CheckerProxy: Fetching date {date} ({i + 1}/{total_dates})...")
         
         try:
-            response = requests.get(DAILY_PROXY_URL_TEMPLATE.format(date=date), headers=HEADERS, timeout=20)
+            response = requests.get(DAILY_PROXY_URL_TEMPLATE.format(date=date), headers=HEADERS, timeout=20, verify=False)
             response.raise_for_status()
             daily_data = response.json()
 
