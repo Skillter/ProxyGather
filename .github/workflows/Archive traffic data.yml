@@ -1,0 +1,26 @@
+name: Archive Traffic Data
+on:
+  schedule:
+    - cron: '0 0 * * *'    # every day at UTC midnight
+jobs:
+  fetch-traffic:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: Get Views & Clones
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        for endpoint in views clones; do
+          curl -s \
+            -H "Authorization: token $GITHUB_TOKEN" \
+            https://api.github.com/repos/${{ github.repository }}/traffic/$endpoint \
+            > traffic-$endpoint-$(date +%Y-%m-%d).json
+        done
+    - name: Commit Archive
+      run: |
+        git config user.name "github-actions"
+        git config user.email "actions@github.com"
+        git add traffic-*.json
+        git commit -m "Archive traffic for $(date +%Y-%m-%d)" || echo "No changes"
+        git push
