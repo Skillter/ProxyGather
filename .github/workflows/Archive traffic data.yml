@@ -16,16 +16,24 @@ jobs:
         # Use your new secret instead of the default token
         GITHUB_TOKEN: ${{ secrets.TRAFFIC_PAT }}
       run: |
+        # -p ensures it doesn't fail if it already exists
+        mkdir -p .github/stats
+
         for endpoint in views clones; do
           curl -s \
             -H "Authorization: token $GITHUB_TOKEN" \
             https://api.github.com/repos/${{ github.repository }}/traffic/$endpoint \
-            > traffic-$endpoint-$(date +%Y-%m-%d).json
+            > .github/stats/traffic-$endpoint-$(date +%Y-%m-%d).json
         done
     - name: Commit Archive
       run: |
-        git config user.name "github-actions"
-        git config user.email "actions@github.com"
-        git add traffic-*.json
-        git commit -m "Archive traffic for $(date +%Y-%m-%d)" || echo "No changes"
-        git push
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        git add .github/stats/traffic-*.json
+        
+        # Check for changes before committing
+        if ! git diff --staged --quiet; then
+          git commit -m "Archive traffic for $(date +%Y-%m-%d)"
+          git push
+        else
+          echo "No changes to commit"
