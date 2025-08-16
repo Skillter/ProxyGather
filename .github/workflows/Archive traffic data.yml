@@ -3,10 +3,12 @@ on:
   schedule:
     - cron: '0 0 * * *'    # every day at UTC midnight
   workflow_dispatch:
-    
+
 jobs:
   fetch-traffic:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
     - uses: actions/checkout@v3
     - name: Get Views & Clones
