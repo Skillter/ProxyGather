@@ -4,6 +4,9 @@ import json
 import time
 from typing import List, Dict, Union, Tuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from urllib.parse import urlparse
+from collections import defaultdict
+import threading
 
 # --- MODIFIED: Changed from a set to a list to enforce a prioritized order. ---
 # Patterns are ordered from most specific/reliable to most generic/broad.
@@ -55,6 +58,22 @@ DEFAULT_HEADERS = {
 PROXY_VALIDATION_REGEX = re.compile(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{1,5}$')
 
 PAGINATED_RATELIMIT_DELAY = 0.8 # In seconds, before it was 1.5
+DOMAIN_RATELIMIT_DELAY = 0.3 # Delay between requests to the same domain
+
+# Thread-safe domain rate limiting
+class DomainRateLimiter:
+    def __init__(self, delay: float):
+        self.delay = delay
+        self.last_request_time = defaultdict(float)
+        self.locks = defaultdict(threading.Lock)
+
+    def wait_if_needed(self, domain: str):
+        """Wait if necessary before making a request to this domain."""
+        with self.locks[domain]:
+            elapsed = time.time() - self.last_request_time[domain]
+            if elapsed < self.delay:
+                time.sleep(self.delay - elapsed)
+            self.last_request_time[domain] = time.time()
 
 def _recursive_json_search_and_extract(data: any, proxies_found: set):
     if isinstance(data, dict):
@@ -108,12 +127,16 @@ def extract_proxies_from_content(content: str, verbose: bool = False) -> set:
         if verbose and proxies_found: print("[DEBUG]  ... Found proxies via general regex fallback.")
     return proxies_found
 
-def _fetch_and_extract_single(url: str, payload: Union[Dict, None], headers: Union[Dict, None], verbose: bool) -> set:
+def _fetch_and_extract_single(url: str, payload: Union[Dict, None], headers: Union[Dict, None], verbose: bool, rate_limiter: DomainRateLimiter = None) -> set:
     request_type = "POST" if payload else "GET"
     merged_headers = DEFAULT_HEADERS.copy()
     if headers:
         merged_headers.update(headers)
-    
+
+    if rate_limiter:
+        domain = urlparse(url).netloc
+        rate_limiter.wait_if_needed(domain)
+
     try:
         if payload:
             response = requests.post(url, headers=merged_headers, data=payload, timeout=15)
@@ -126,18 +149,58 @@ def _fetch_and_extract_single(url: str, payload: Union[Dict, None], headers: Uni
             print(f"[ERROR] Could not fetch URL ({request_type}) {url}: {e}")
         return set()
 
+def _scrape_paginated_url(base_url: str, base_payload: Union[Dict, None], base_headers: Union[Dict, None], verbose: bool, rate_limiter: DomainRateLimiter) -> Tuple[set, bool]:
+    """Scrapes a single paginated URL and returns (proxies, found_any)."""
+    proxies = set()
+    page_num = 1
+    found_any = False
+
+    if verbose: print(f"[INFO] General Scraper: Starting pagination for {base_url}")
+
+    while True:
+        current_url = base_url.replace("{page}", str(page_num))
+        current_payload = None
+        if base_payload:
+            payload_str = json.dumps(base_payload)
+            payload_str = payload_str.replace("{page}", str(page_num))
+            current_payload = json.loads(payload_str)
+
+        if verbose: print(f"[INFO]   ... Scraping page {page_num} ({current_url})")
+
+        newly_scraped = _fetch_and_extract_single(current_url, current_payload, base_headers, verbose, rate_limiter)
+
+        if newly_scraped:
+            found_any = True
+            initial_count = len(proxies)
+            proxies.update(newly_scraped)
+
+            if len(proxies) == initial_count:
+                if verbose: print("[INFO]   ... No new unique proxies found. Ending pagination.")
+                break
+        else:
+            if verbose: print(f"[INFO]   ... No proxies found on page {page_num}. Ending pagination.")
+            break
+
+        page_num += 1
+        time.sleep(PAGINATED_RATELIMIT_DELAY)
+
+    return proxies, found_any
+
 def scrape_proxies(
     scrape_targets: List[Tuple[str, Union[Dict, None], Union[Dict, None]]], 
     verbose: bool = False, 
     max_workers: int = 10
 ) -> Tuple[List[str], List[str]]:
     """
-    Scrapes proxies and now returns both the proxies and a list of successful source URLs.
+    Scrapes proxies concurrently with domain-based rate limiting.
+    Returns both the proxies and a list of successful source URLs.
     """
     all_proxies = set()
     successful_urls = set()
     single_req_targets = []
     paginated_targets = []
+
+    rate_limiter = DomainRateLimiter(DOMAIN_RATELIMIT_DELAY)
 
     for url, payload, headers in scrape_targets:
         is_paginated = "{page}" in url or ("{page}" in json.dumps(payload) if payload else False)
@@ -147,10 +210,10 @@ def scrape_proxies(
             single_req_targets.append((url, payload, headers))
 
     if single_req_targets:
-        print(f"[INFO] General Scraper: Found {len(single_req_targets)} single-request URLs. Scraping concurrently...")
+        print(f"[INFO] General Scraper: Found {len(single_req_targets)} single-request URLs. Scraping concurrently with domain rate limiting...")
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             future_to_url = {
-                executor.submit(_fetch_and_extract_single, url, payload, headers, False): url 
+                executor.submit(_fetch_and_extract_single, url, payload, headers, verbose, rate_limiter): url
                 for url, payload, headers in single_req_targets
             }
             for future in as_completed(future_to_url):
@@ -160,45 +223,27 @@ def scrape_proxies(
                     if proxies_from_url:
                         if verbose: print(f"[INFO] General Scraper: Found {len(proxies_from_url)} proxies on {url}")
                         all_proxies.update(proxies_from_url)
-                        successful_urls.add(url) # Mark this URL as successful
+                        successful_urls.add(url)
                 except Exception as exc:
                     if verbose: print(f"[ERROR] An exception occurred while processing {url}: {exc}")
 
+    # Scrape paginated URLs concurrently (each pagination runs sequentially, but different URLs run in parallel)
     if paginated_targets:
-        print(f"[INFO] General Scraper: Found {len(paginated_targets)} paginated URLs. Scraping sequentially...")
-        for base_url, base_payload, base_headers in paginated_targets:
-            page_num = 1
-            print(f"[INFO] General Scraper: Starting pagination for {base_url}")
-            found_any_on_paginated_url = False
-            while True:
-                current_url = base_url.replace("{page}", str(page_num))
-                current_payload = None
-                if base_payload:
-                    payload_str = json.dumps(base_payload)
-                    payload_str = payload_str.replace("{page}", str(page_num))
-                    current_payload = json.loads(payload_str)
-                
-                if verbose: print(f"[INFO]   ... Scraping page {page_num} ({current_url})")
-                
-                newly_scraped = _fetch_and_extract_single(current_url, current_payload, base_headers, False)
-                
-                if newly_scraped:
-                    found_any_on_paginated_url = True
-                else:
-                    if verbose: print(f"[INFO]   ... No proxies found on page {page_num}. Ending pagination.")
-                    break
-                
-                initial_count = len(all_proxies)
-                all_proxies.update(newly_scraped)
-                
-                if len(all_proxies) == initial_count:
-                    if verbose: print("[INFO]   ... No new unique proxies found. Ending pagination.")
-                    break
-
-                page_num += 1
-                time.sleep(PAGINATED_RATELIMIT_DELAY)
-            
-            if found_any_on_paginated_url:
-                successful_urls.add(base_url) # Mark the base URL as successful
+        print(f"[INFO] General Scraper: Found {len(paginated_targets)} paginated URLs. Scraping concurrently with domain rate limiting...")
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_url = {
+                executor.submit(_scrape_paginated_url, base_url, base_payload, base_headers, verbose, rate_limiter): base_url
+                for base_url, base_payload, base_headers in paginated_targets
+            }
+            for future in as_completed(future_to_url):
+                base_url = future_to_url[future]
+                try:
+                    proxies_from_url, found_any = future.result()
+                    if found_any:
+                        if verbose: print(f"[INFO] General Scraper: Found {len(proxies_from_url)} total proxies from {base_url}")
+                        all_proxies.update(proxies_from_url)
+                        successful_urls.add(base_url)
+                except Exception as exc:
+                    if verbose: print(f"[ERROR] An exception occurred while processing {base_url}: {exc}")
 
     return sorted(list(all_proxies)), sorted(list(successful_urls))
