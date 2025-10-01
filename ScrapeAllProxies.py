@@ -21,7 +21,6 @@ from scrapers.gologin_scraper import scrape_from_gologin_api
 from scrapers.proxyhttp_scraper import scrape_from_proxyhttp
 from automation_scrapers.spysone_scraper import scrape_from_spysone
 from automation_scrapers.openproxylist_scraper import scrape_from_openproxylist
-from automation_scrapers.webshare_scraper import scrape_from_webshare
 from automation_scrapers.hidemn_scraper import scrape_from_hidemn
 
 SITES_FILE = 'sites-to-get-proxies-from.txt'
@@ -132,15 +131,14 @@ def main():
         'Spys.one': scrape_from_spysone,
         'OpenProxyList': scrape_from_openproxylist,
         'Hide.mn': scrape_from_hidemn,
-        'Webshare': scrape_from_webshare,
         'XSEO': scrape_from_xseo,
         'GoLogin': scrape_from_gologin_api,
         'ProxyList.org': scrape_from_proxylistorg,
         'ProxyHttp': scrape_from_proxyhttp,
     }
     
-    AUTOMATION_SCRAPER_NAMES = ['OpenProxyList', 'Webshare', 'Hide.mn', 'Spys.one']
-    HEADFUL_SCRAPERS = ['Hide.mn', 'Webshare', 'Spys.one']
+    AUTOMATION_SCRAPER_NAMES = ['OpenProxyList', 'Hide.mn', 'Spys.one']
+    HEADFUL_SCRAPERS = ['Hide.mn', 'Spys.one']
     general_scraper_name = 'Websites'
     all_scraper_names = sorted(list(all_scraper_tasks.keys()) + [general_scraper_name])
 
