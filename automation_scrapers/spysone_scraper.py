@@ -133,8 +133,10 @@ def scrape_from_spysone(sb: BaseCase, verbose: bool = False) -> List[str]:
             sb.find_element("a[href='/en/free-proxy-list/']", timeout=6).click()
             time.sleep(1)
             sb.ad_block()
-            sb.js_click('#dismiss-button', all_matches=True, timeout=3)
-            # sb.find_element("#dismiss-button", timeout=2).click()
+            try:
+                sb.js_click('#dismiss-button', all_matches=True, timeout=3)
+            except Exception as e:
+                print("Not found an optional dismiss button, but that's fine (#dismiss-button)")
             time.sleep(0.5)
             sb.wait_for_element_present('body > table:nth-child(3)', timeout=20)
         except Exception as e:
