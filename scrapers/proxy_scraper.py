@@ -8,7 +8,7 @@ from urllib.parse import urlparse
 from collections import defaultdict
 import threading
 
-# --- MODIFIED: Changed from a set to a list to enforce a prioritized order. ---
+# Changed from a set to a list to enforce a prioritized order.
 # Patterns are ordered from most specific/reliable to most generic/broad.
 PATTERNS = [
     # --- High Priority: Very specific and low risk of false positives ---
@@ -58,7 +58,7 @@ DEFAULT_HEADERS = {
 PROXY_VALIDATION_REGEX = re.compile(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{1,5}$')
 
 PAGINATED_RATELIMIT_DELAY = 0.8 # In seconds, before it was 1.5
-DOMAIN_RATELIMIT_DELAY = 0.3 # Delay between requests to the same domain
+DOMAIN_RATELIMIT_DELAY = 0.5 # Delay between requests to the same domain
 
 # Thread-safe domain rate limiting
 class DomainRateLimiter:
@@ -210,7 +210,7 @@ def scrape_proxies(
             single_req_targets.append((url, payload, headers))
 
     if single_req_targets:
-        print(f"[INFO] General Scraper: Found {len(single_req_targets)} single-request URLs. Scraping concurrently with domain rate limiting...")
+        print(f"[INFO] General Scraper: Found {len(single_req_targets)} single-request URLs")
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             future_to_url = {
                 executor.submit(_fetch_and_extract_single, url, payload, headers, verbose, rate_limiter): url
