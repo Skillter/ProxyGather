@@ -18,7 +18,7 @@ If you find this project useful, **please consider giving it a star ⭐** or sha
 ## So what makes this project different from other proxy scrapers?
 
 *   **Advanced Anti-Bot Evasion**: This isn't just a simple script. It includes dedicated logic for websites that use advanced anti-bot measures like session validation, Recaptcha fingerprinting or even required account registration.
-It can parse JavaScript-obfuscated IPs, decode Base64-encoded proxies, handle paginated API calls, and in cases where it's required, a headless automated browser (`undetected-chromedriver`) to trick the detection to unlock exclusive proxies that other tools can't reach.
+It can parse JavaScript-obfuscated IPs, decode Base64-encoded proxies, handle paginated API calls, and in cases where it's required, an automated browser ([SeleniumBase](https://github.com/seleniumbase/SeleniumBase)) to bypass the detection and unlock exclusive proxies that other tools can't reach.
 
 *   **A Checker That's Actually Smart**: Most proxy checkers just see if a port is open. That's not good enough. A proxy can be "alive" but useless or even malicious. This engine's validator is more sophisticated.
     *   **Detects Hijacking**: It sends a request to a trusted third-party 'judge'. If a proxy returns some weird ad page or incorrect content instead of the real response, it's immediately flagged as a potential **hijack** and discarded. This is a common issue with free proxies that this checker actively prevents.
