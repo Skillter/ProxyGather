@@ -1,9 +1,9 @@
-import requests
 import re
 import base64
 import time
 import random
 from typing import List
+from helper.request_utils import get_with_retry
 
 # The URL template for the website, with a placeholder for the page number
 URL_TEMPLATE = "https://proxy-list.org/english/index.php?p={page}"
@@ -47,8 +47,7 @@ def scrape_from_proxylistorg(verbose: bool = True) -> List[str]:
             print(f"[INFO] ProxyList.org: Scraping page {page_num}...")
 
         try:
-            response = requests.get(url, headers=HEADERS, timeout=20)
-            response.raise_for_status()
+            response = get_with_retry(url=url, headers=HEADERS, timeout=20, verbose=verbose)
 
             # Find all the Base64 encoded strings on the page
             encoded_proxies = PROXY_EXTRACTION_REGEX.findall(response.text)
@@ -83,9 +82,7 @@ def scrape_from_proxylistorg(verbose: bool = True) -> List[str]:
                     print("[INFO]   ... No new unique proxies found. Stopping to prevent infinite loop.")
                 break
 
-        except requests.exceptions.RequestException as e:
-            if verbose:
-                print(f"[ERROR]  ... Could not fetch page {page_num}: {e}. Stopping this scraper.")
+        except Exception:
             break # Stop if a page fails to load
         
         # Polite Rate-limiting: Wait before hitting the next page

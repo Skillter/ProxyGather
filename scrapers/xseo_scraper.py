@@ -1,6 +1,6 @@
-import requests
 import re
 from typing import List, Dict
+from helper.request_utils import post_with_retry
 
 # --- MODIFIED: Changed from a single URL to a list of URLs to scrape ---
 URLS_TO_SCRAPE = [
@@ -69,8 +69,7 @@ def scrape_from_xseo(verbose: bool = True) -> List[str]:
             if verbose:
                 print(f"[INFO] XSEO.in: Sending POST request to {url}")
             
-            response = requests.post(url, headers=HEADERS, data=PAYLOAD, timeout=20)
-            response.raise_for_status()
+            response = post_with_retry(url=url, data=PAYLOAD, headers=HEADERS, timeout=20, verbose=verbose)
             html_content = response.text
             
             # --- MODIFIED: Implement a two-pass scraping strategy ---
@@ -127,13 +126,7 @@ def scrape_from_xseo(verbose: bool = True) -> List[str]:
             
             all_proxies.update(proxies_from_url)
 
-        except requests.exceptions.RequestException as e:
-            if verbose:
-                print(f"[ERROR] XSEO.in: Failed to fetch or process data from {url}: {e}")
-            continue
-        except Exception as e:
-            if verbose:
-                print(f"[ERROR] XSEO.in: An unexpected error occurred while scraping {url}: {e}")
+        except Exception:
             continue
 
     if verbose:

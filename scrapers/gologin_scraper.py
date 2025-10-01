@@ -1,6 +1,6 @@
-import requests
 import re
 from typing import List
+from helper.request_utils import get_with_retry
 
 # URL to fetch the initial page and find the auth token
 GOLOGIN_URL = "https://gologin.com/free-proxy/"
@@ -36,11 +36,10 @@ def scrape_from_gologin_api(verbose: bool = False) -> List[str]:
         if verbose:
             print(f"[INFO] GoLogin: Fetching auth token from {GOLOGIN_URL}")
         
-        response = requests.get(GOLOGIN_URL, headers=HEADERS, timeout=20)
-        response.raise_for_status()
+        response = get_with_retry(url=GOLOGIN_URL, headers=HEADERS, timeout=20, verbose=verbose)
         html_content = response.text
         
-    except requests.exceptions.RequestException as e:
+    except Exception as e:
         raise Exception(f"Could not fetch the initial page from GoLogin: {e}") from e
 
     # --- Step 2: Extract the Authorization token using regex ---
@@ -64,11 +63,10 @@ def scrape_from_gologin_api(verbose: bool = False) -> List[str]:
         if verbose:
             print(f"[INFO] Geoxy API: Fetching proxies from {GEOXY_API_URL}")
         
-        response = requests.get(GEOXY_API_URL, headers=api_headers, timeout=30)
-        response.raise_for_status()
+        response = get_with_retry(url=GEOXY_API_URL, headers=api_headers, timeout=30, verbose=verbose)
         proxy_data = response.json()
         
-    except requests.exceptions.RequestException as e:
+    except Exception as e:
         raise Exception(f"Could not fetch proxies from the Geoxy API: {e}") from e
     except ValueError as e: # Catches JSON decoding errors
         raise Exception(f"Failed to decode JSON from Geoxy API response: {e}") from e

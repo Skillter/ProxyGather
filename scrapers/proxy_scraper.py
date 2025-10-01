@@ -7,6 +7,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.parse import urlparse
 from collections import defaultdict
 import threading
+from helper.request_utils import get_with_retry, post_with_retry
 
 # Changed from a set to a list to enforce a prioritized order.
 # Patterns are ordered from most specific/reliable to most generic/broad.
@@ -128,7 +129,6 @@ def extract_proxies_from_content(content: str, verbose: bool = False) -> set:
     return proxies_found
 
 def _fetch_and_extract_single(url: str, payload: Union[Dict, None], headers: Union[Dict, None], verbose: bool, rate_limiter: DomainRateLimiter = None) -> set:
-    request_type = "POST" if payload else "GET"
     merged_headers = DEFAULT_HEADERS.copy()
     if headers:
         merged_headers.update(headers)
@@ -139,14 +139,11 @@ def _fetch_and_extract_single(url: str, payload: Union[Dict, None], headers: Uni
 
     try:
         if payload:
-            response = requests.post(url, headers=merged_headers, data=payload, timeout=15)
+            response = post_with_retry(url, data=payload, headers=merged_headers, timeout=15, verbose=verbose)
         else:
-            response = requests.get(url, headers=merged_headers, timeout=15)
-        response.raise_for_status()
+            response = get_with_retry(url, headers=merged_headers, timeout=15, verbose=verbose)
         return extract_proxies_from_content(response.text, verbose=verbose)
-    except requests.exceptions.RequestException as e:
-        if verbose:
-            print(f"[ERROR] Could not fetch URL ({request_type}) {url}: {e}")
+    except requests.exceptions.RequestException:
         return set()
 
 def _scrape_paginated_url(base_url: str, base_payload: Union[Dict, None], base_headers: Union[Dict, None], verbose: bool, rate_limiter: DomainRateLimiter) -> Tuple[set, bool]:

@@ -1,6 +1,6 @@
-import requests
 from typing import List
 import time
+from helper.request_utils import get_with_retry
 
 # The base URL for the API, we'll add the skip parameter in the loop
 API_URL_TEMPLATE = "https://api.proxyscrape.com/v4/free-proxy-list/get?request=displayproxies&timeout=8000&country=all&ssl=all&anonymity=all"
@@ -32,8 +32,7 @@ def fetch_from_api(verbose: bool = False) -> List[str]:
         paginated_url = f"{API_URL_TEMPLATE}&skip={skip}"
         
         try:
-            response = requests.get(paginated_url, headers=HEADERS, timeout=25)
-            response.raise_for_status() # check for http errors
+            response = get_with_retry(url=paginated_url, headers=HEADERS, timeout=25, verbose=verbose) # check for http errors
 
             # the api returns plain text with one proxy per line
             proxies_on_page = [line for line in response.text.strip().splitlines() if line]
@@ -54,9 +53,7 @@ def fetch_from_api(verbose: bool = False) -> List[str]:
             page_num += 1
             time.sleep(0.5) # a small delay to be nice to the api
 
-        except requests.exceptions.RequestException as e:
-            if verbose:
-                print(f"[ERROR] Could not fetch proxies from API on page {page_num}: {e}")
+        except Exception:
             break # stop if there's an error
 
     if verbose:

@@ -1,7 +1,7 @@
-import requests
 import time
 import random
 from typing import List
+from helper.request_utils import get_with_retry
 
 # --- Configuration for Geonode API and polite scraping ---
 API_BASE_URL = "https://proxylist.geonode.com/api/proxy-list"
@@ -45,9 +45,7 @@ def scrape_from_geonode_api(verbose: bool = False) -> List[str]:
             print(f"[INFO] Fetching Geonode API page {page}...")
 
         try:
-            response = requests.get(API_BASE_URL, params=params, headers=HEADERS, timeout=20)
-            response.raise_for_status()
-
+            response = get_with_retry(url=API_BASE_URL, headers=HEADERS, timeout=20, verbose=verbose, params=params)
             api_data = response.json()
             proxies_on_page = api_data.get('data', [])
 
@@ -79,9 +77,7 @@ def scrape_from_geonode_api(verbose: bool = False) -> List[str]:
                 print(f"[INFO]   ... Waiting for {sleep_duration:.2f} seconds.")
             time.sleep(sleep_duration)
 
-        except requests.exceptions.RequestException as e:
-            if verbose:
-                print(f"[ERROR] Could not fetch Geonode API on page {page}: {e}")
+        except Exception:
             break # Stop on any network-related error
         except (ValueError, KeyError) as e:
             if verbose:
