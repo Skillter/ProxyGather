@@ -26,8 +26,8 @@ from automation_scrapers.hidemn_scraper import scrape_from_hidemn
 
 SITES_FILE = 'sites-to-get-proxies-from.txt'
 DEFAULT_OUTPUT_FILE = 'scraped-proxies.txt'
-INDIVIDUAL_SCRAPER_TIMEOUT = 240
-MAX_TOTAL_RUNTIME = 600
+INDIVIDUAL_SCRAPER_TIMEOUT = 100
+MAX_TOTAL_RUNTIME = 300
 
 INVALID_IP_REGEX = re.compile(
     r"^(10\.|127\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.|169\.254\.|0\.|2(2[4-9]|3[0-9])\.|2(4[0-9]|5[0-5])\.)"
