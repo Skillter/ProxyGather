@@ -1,11 +1,11 @@
 import time
 import re
-from typing import Callable, List, Set, Any, TypeVar
+from typing import Callable, List, Set, Any, TypeVar, Optional
 from seleniumbase import BaseCase
+from seleniumbase import SB
+from selenium.webdriver.remote.webelement import WebElement
 import helper.turnstile as turnstile
 import fasteners
-import re
-import time
 from contextlib import suppress
 from seleniumbase import config as sb_config
 from seleniumbase.fixtures import constants
@@ -84,11 +84,10 @@ def _extract_proxies_from_html(sb: BaseCase, verbose: bool = False) -> Set[str]:
 
     return proxies
 def _handle_turnstile(sb: BaseCase, verbose: bool, callable_after_page_reload: Callable=None):
-    if turnstile.is_turnstile_present(sb, 10): #5
+    if turnstile.is_turnstile_present(sb, 10):
         if verbose: print("[INFO] Spys.one: Cloudflare challenge detected. Solving...")
-        _uc_gui_click_captcha(sb, callable_after_page_reload=callable_after_page_reload)
-        # sb.uc_gui_click_x_y(240, 330) # This could work, but is more prone for different setups/less stable
-        
+        _uc_gui_click_captcha(sb, callable_after_page_reload=callable_after_page_reload, verbose=verbose)
+
         sb.wait_for_element_present('body > table:nth-child(3)', timeout=20)
         if verbose: print("[SUCCESS] Spys.one: Challenge solved.")
 
@@ -99,19 +98,37 @@ def scrape_from_spysone(sb: BaseCase, verbose: bool = False) -> List[str]:
     """
     if verbose:
         print("[RUNNING] 'Spys.one' automation scraper has started.")
-    
+
     all_proxies = set()
-    # base_url = "https://spys.one/free-proxy-list/ALL/"
     base_url = "https://spys.one/en/"
-    
-    
+    MAX_RETRIES = 3
+    RETRY_DELAY = 10
+
+    for attempt in range(1, MAX_RETRIES + 1):
+        try:
+            if verbose and attempt > 1:
+                print(f"[RETRY] Spys.one: Attempt {attempt}/{MAX_RETRIES} to access {base_url}...")
+
+            if verbose: print(f"[INFO] Spys.one: Navigating to {base_url}...")
+            sb.open(base_url)
+            sb.ad_block()
+
+            if "403" in sb.get_title() or "Forbidden" in sb.get_page_source()[:500]:
+                raise Exception("HTTP 403 Forbidden detected")
+
+            break
+        except Exception as e:
+            if attempt < MAX_RETRIES:
+                if verbose:
+                    print(f"[WARN] Spys.one: Failed to access page (attempt {attempt}/{MAX_RETRIES}): {e}")
+                    print(f"[RETRY] Waiting {RETRY_DELAY}s before retry...")
+                time.sleep(RETRY_DELAY)
+            else:
+                if verbose:
+                    print(f"[ERROR] Spys.one: Failed to access {base_url} after {MAX_RETRIES} attempts")
+                return sorted(list(all_proxies))
+
     try:
-        # Navigate to the main page
-        if verbose: print(f"[INFO] Spys.one: Navigating to {base_url}...")
-        sb.open(base_url)
-        sb.ad_block()
-        
-        # time.sleep(100)
         # Check and solve initial turnstile challenge
         _handle_turnstile(sb, verbose=verbose)
 
@@ -122,7 +139,6 @@ def scrape_from_spysone(sb: BaseCase, verbose: bool = False) -> List[str]:
             print("An exception occurred while trying to find and click the cookie consent button.")
             print(e)
 
-        
         # Extract proxies from initial page using the new combined method
         initial_proxies = _extract_proxies_from_html(sb, verbose)
         all_proxies.update(initial_proxies)
@@ -130,14 +146,16 @@ def scrape_from_spysone(sb: BaseCase, verbose: bool = False) -> List[str]:
         
         try:
             time.sleep(0.5)
-            sb.find_element("a[href='/en/free-proxy-list/']", timeout=6).click()
-            time.sleep(1)
+            sb.open("https://spys.one/en/free-proxy-list/")
+            sb.wait_for_ready_state_complete(timeout=10)
             sb.ad_block()
+            time.sleep(0.3)
+
             try:
-                sb.js_click('#dismiss-button', all_matches=True, timeout=3)
+                sb.js_click('#dismiss-button', all_matches=True, timeout=1)
+                time.sleep(0.2)
             except Exception as e:
-                print("Not found an optional dismiss button, but that's fine (#dismiss-button)")
-            time.sleep(0.5)
+                print("[WARNING] Not found an optional dismiss button, but that's fine (#dismiss-button)")
             sb.wait_for_element_present('body > table:nth-child(3)', timeout=20)
         except Exception as e:
             print("An exception occurred while trying to find and click the Proxy search button.")
@@ -243,7 +261,8 @@ def _uc_gui_click_captcha(
     retry=False,
     blind=False,
     ctype=None,
-    callable_after_page_reload: Callable=None
+    callable_after_page_reload: Callable=None,
+    verbose: bool=False
 ):
     driver = sb.driver
     cdp_mode_on_at_start = __is_cdp_swap_needed(driver)
