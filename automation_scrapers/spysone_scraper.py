@@ -177,8 +177,8 @@ def scrape_from_spysone(sb: BaseCase, verbose: bool = False) -> List[str]:
                         sb.ad_block()
                         sb.get_element(f'#{dropdown_id}', timeout=5).click()
                         sb.select_option_by_value(f'#{dropdown_id}', value, timeout=5)
-                        print(f"[INFO] Spysone: Applying dropdown selection: {dropdown_id} -> {value}")
                         time.sleep(0.5)  # Small delay for JS to react
+                        if verbose: print(f"[INFO] Spysone: Applying dropdown selection: {dropdown_id} -> {value}")
                     callable_after_page_reload()
                     # time.sleep(3)
                     _handle_turnstile(sb, verbose=verbose, callable_after_page_reload=callable_after_page_reload)
@@ -517,16 +517,16 @@ def _uc_gui_click_captcha(
             sb_config._saved_cf_x_y = (x, y)
             if not __is_cdp_swap_needed(driver):
                 if driver.is_element_present(".footer .clearfix .ray-id"):
-                    print("driver.uc_open_with_disconnect(driver.get_current_url(), 3.8)")
+                    if verbose: print("driver.uc_open_with_disconnect(driver.get_current_url(), 3.8)")
                     driver.uc_open_with_disconnect(driver.get_current_url(), 3.8)
                     
                     # --- The fix for spys.one starts here ---
                     # After a reload we lose the POST payload, so we need to send the payload again, before we click the captcha (otherwise turnstile doesn't show up)
-                    print("callable_after_page_reload() starts now")
+                    if verbose: print("callable_after_page_reload() starts now")
                     if callable_after_page_reload:
-                        print("[DEBUG] Spys.one: Re-applying action after captcha solver reloaded page.")
+                        if verbose: print("[DEBUG] Spys.one: Re-applying action after captcha solver reloaded page.")
                         callable_after_page_reload()
-                    print("callable_after_page_reload() ends now")
+                    if verbose: print("callable_after_page_reload() ends now")
                     
                     # We need to wait for turnstile to reload and become ready again
                     sb.sleep(6)
@@ -581,14 +581,12 @@ def _uc_gui_click_captcha(
                     driver.switch_to.parent_frame(checkbox_success)
                     return
             if blind:
-                print("if blind: driver.uc_open_with_disconnect(driver.get_current_url(), 3.8)")
                 driver.uc_open_with_disconnect(driver.get_current_url(), 3.8)
                 if __is_cdp_swap_needed(driver) and _on_a_captcha_page(driver):
                     _uc_gui_click_x_y(driver, x, y, timeframe=0.32)
                 else:
                     time.sleep(0.1)
             else:
-                print("else: driver.uc_open_with_reconnect(driver.get_current_url(), 3.8)")
                 driver.uc_open_with_reconnect(driver.get_current_url(), 3.8)
                 if _on_a_captcha_page(driver):
                     driver.disconnect()
