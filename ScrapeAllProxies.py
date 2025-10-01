@@ -80,8 +80,10 @@ def run_automation_task(scraper_name: str, scraper_func, verbose_flag: bool, is_
             user_data_dir=temp_dir
         ) as sb:
             return scraper_func(sb, verbose=verbose_flag)
+    except Exception as e:
+        print(f"[ERROR] {scraper_name} scraper failed: {e}")
+        return []
     finally:
-        # Ensure the temporary directory is always cleaned up
         shutil.rmtree(temp_dir, ignore_errors=True)
 
 def pre_run_browser_setup():
@@ -123,17 +125,17 @@ def main():
 
     all_scraper_tasks = {
         'ProxyScrape': fetch_from_api,
-        'ProxyDB': scrape_all_from_proxydb,
         'Geonode': scrape_from_geonode_api,
+        'ProxyDB': scrape_all_from_proxydb,
         'CheckerProxy': scrape_checkerproxy_archive,
-        'ProxyList.org': scrape_from_proxylistorg,
-        'XSEO': scrape_from_xseo,
-        'GoLogin': scrape_from_gologin_api,
-        'ProxyHttp': scrape_from_proxyhttp,
         'Spys.one': scrape_from_spysone,
         'OpenProxyList': scrape_from_openproxylist,
-        'Webshare': scrape_from_webshare,
         'Hide.mn': scrape_from_hidemn,
+        'Webshare': scrape_from_webshare,
+        'XSEO': scrape_from_xseo,
+        'GoLogin': scrape_from_gologin_api,
+        'ProxyList.org': scrape_from_proxylistorg,
+        'ProxyHttp': scrape_from_proxyhttp,
     }
     
     AUTOMATION_SCRAPER_NAMES = ['OpenProxyList', 'Webshare', 'Hide.mn', 'Spys.one']
