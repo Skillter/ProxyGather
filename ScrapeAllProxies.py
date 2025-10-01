@@ -257,7 +257,7 @@ def main():
             print(f"[ERROR] The following scrapers failed to complete and are likely stuck: {', '.join(stuck_scrapers)}")
     finally:
         for executor in executors:
-            executor.shutdown(wait=False, cancel_futures=True)
+            executor.shutdown(wait=True, cancel_futures=True)
 
     print("\n--- Combining and processing all results ---")
     combined_proxies = {p for proxy_list in results.values() if proxy_list for p in proxy_list if p and p.strip()}
@@ -292,4 +292,8 @@ def main():
             print(f"[ERROR] Failed to update '{SITES_FILE}': {e}")
 
 if __name__ == "__main__":
-    main()
+    import sys
+    try:
+        main()
+    finally:
+        sys.exit(0)
