@@ -26,7 +26,8 @@ from automation_scrapers.hidemn_scraper import scrape_from_hidemn
 
 SITES_FILE = 'sites-to-get-proxies-from.txt'
 DEFAULT_OUTPUT_FILE = 'scraped-proxies.txt'
-INDIVIDUAL_SCRAPER_TIMEOUT = 240  # 4 minutes in seconds
+INDIVIDUAL_SCRAPER_TIMEOUT = 240
+MAX_TOTAL_RUNTIME = 600
 
 INVALID_IP_REGEX = re.compile(
     r"^(10\.|127\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.|169\.254\.|0\.|2(2[4-9]|3[0-9])\.|2(4[0-9]|5[0-5])\.)"
@@ -237,10 +238,10 @@ def main():
     try:
         if all_futures:
             print("\n--- Waiting for all scrapers to complete... ---")
-            for future in as_completed(all_futures, timeout=INDIVIDUAL_SCRAPER_TIMEOUT):
+            for future in as_completed(all_futures):
                 name = future_to_scraper.get(future, "Unknown")
                 try:
-                    result_data = future.result()
+                    result_data = future.result(timeout=INDIVIDUAL_SCRAPER_TIMEOUT)
                     if name == general_scraper_name:
                         proxies_found, urls = result_data
                         results[name] = proxies_found
@@ -248,18 +249,31 @@ def main():
                     else:
                         results[name] = result_data
                     print(f"[COMPLETED] '{name}' finished, found {len(results.get(name, []))} proxies.")
+                except TimeoutError:
+                    results[name] = []
+                    print(f"[TIMEOUT] Scraper '{name}' exceeded {INDIVIDUAL_SCRAPER_TIMEOUT}s timeout. Cancelling...")
+                    future.cancel()
                 except Exception as e:
                     results[name] = []
                     print(f"[ERROR] Scraper '{name}' failed: {e}")
-    except TimeoutError:
-        print(f"\n[TIMEOUT] Global scraper stall detector triggered after {INDIVIDUAL_SCRAPER_TIMEOUT} seconds.")
-        running_futures = [f for f in all_futures if not f.done()]
-        if running_futures:
-            stuck_scrapers = {future_to_scraper.get(f, "Unknown") for f in running_futures}
-            print(f"[ERROR] The following scrapers failed to complete and are likely stuck: {', '.join(stuck_scrapers)}")
     finally:
         for executor in executors:
             executor.shutdown(wait=True, cancel_futures=True)
+
+        for future, name in future_to_scraper.items():
+            if name not in results and future.done():
+                try:
+                    result_data = future.result(timeout=0)
+                    if name == general_scraper_name:
+                        proxies_found, urls = result_data
+                        results[name] = proxies_found
+                        successful_general_urls.extend(urls)
+                    else:
+                        results[name] = result_data
+                    print(f"[RECOVERED] '{name}' finished after shutdown, found {len(results.get(name, []))} proxies.")
+                except Exception as e:
+                    results[name] = []
+                    print(f"[ERROR] Could not recover results from '{name}': {e}")
 
     print("\n--- Combining and processing all results ---")
     combined_proxies = {p for proxy_list in results.values() if proxy_list for p in proxy_list if p and p.strip()}
