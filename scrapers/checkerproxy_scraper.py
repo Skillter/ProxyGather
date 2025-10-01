@@ -73,17 +73,16 @@ def scrape_checkerproxy_archive(verbose: bool = True) -> List[str]:
             response = get_with_retry(url=url, headers=HEADERS, timeout=20, verbose=verbose, verify=False)
             daily_data = response.json()
 
-            if not daily_data.get("success") or not daily_data.get("data", {}).get("items"):
+            if not daily_data.get("success") or not daily_data.get("data", {}).get("proxyList"):
                 if verbose:
                     print(f"[WARN] CheckerProxy: No valid data for {date}. Skipping.")
                 continue
 
-            items = daily_data['data']['items']
+            proxy_list = daily_data['data']['proxyList']
             valid_count = 0
             invalid_count = 0
 
-            for item in items:
-                proxy_str = item.get('address')
+            for proxy_str in proxy_list:
                 if proxy_str and PROXY_VALIDATION_REGEX.match(proxy_str):
                     all_proxies.add(proxy_str)
                     valid_count += 1
@@ -91,7 +90,7 @@ def scrape_checkerproxy_archive(verbose: bool = True) -> List[str]:
                     invalid_count += 1
 
             if verbose:
-                print(f"[INFO]   ... Found {len(items)} entries. {valid_count} valid, {invalid_count} invalid.")
+                print(f"[INFO]   ... Found {len(proxy_list)} entries. {valid_count} valid, {invalid_count} invalid.")
 
         except Exception as e:
             if verbose:
