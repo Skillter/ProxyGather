@@ -109,6 +109,47 @@ def pre_run_browser_setup():
         print("[INFO] The script will continue, but may face issues with concurrent browser startup.")
 
 
+def show_legal_disclaimer(auto_accept=False):
+    """Display legal disclaimer and get user confirmation."""
+    print("\n" + "="*70)
+    print("LEGAL COMPLIANCE NOTICE")
+    print("="*70)
+    print("\nWARNING: Scraping websites may violate their Terms of Service or local")
+    print("laws. By continuing in this mode, you acknowledge that:")
+    print("")
+    print("  - You are responsible for ensuring compliance with all applicable laws")
+    print("  - You are responsible for respecting scraped websites' Terms of Service")
+    print("  - This mode may bypass anti-bot measures and ignore robots.txt")
+    print("  - You assume all legal liability for your use of this tool")
+    print("")
+    print("Recommended: Use --compliant mode for legal compliance:")
+    print("  python ScrapeAllProxies.py --compliant")
+    print("")
+    print("Compliant mode will:")
+    print("  - Respect robots.txt directives")
+    print("  - Skip sources that require anti-bot logic or browser automation")
+    print("  - Significantly reduce the number of scraped proxies")
+    print("="*70)
+    print("")
+
+    if auto_accept:
+        import time
+        print("[INFO] Auto-accepting disclaimer (--yes flag provided). Proceeding in 2 seconds...")
+        time.sleep(2)
+        print("\n[INFO] Proceeding in aggressive mode. You are responsible for legal compliance.\n")
+        return True
+
+    while True:
+        response = input("Type 'y' or 'yes' to accept and continue in aggressive mode: ").strip().lower()
+        if response in ['y', 'yes']:
+            print("\n[INFO] Proceeding in aggressive mode. You are responsible for legal compliance.\n")
+            return True
+        elif response in ['n', 'no']:
+            print("\n[INFO] Operation cancelled. Use --compliant for legal compliance.")
+            sys.exit(0)
+        else:
+            print("Invalid input. Please type 'y', 'yes', 'n', or 'no'.")
+
 def main():
     parser = argparse.ArgumentParser(description="A powerful, multi-source proxy scraper.")
     parser.add_argument('--output', default=DEFAULT_OUTPUT_FILE, help=f"The output file for scraped proxies. Defaults to '{DEFAULT_OUTPUT_FILE}'.")
@@ -116,12 +157,17 @@ def main():
     parser.add_argument('--automation-threads', type=int, default=3, help="Max concurrent headless browser automation scrapers (processes). Default: 3")
     parser.add_argument('--remove-dead-links', action='store_true', help="Removes URLs from the sites file that return no proxies.")
     parser.add_argument('-v', '--verbose', action='store_true', help="Enable detailed logging for each scraper.")
-    
+    parser.add_argument('--compliant', action='store_true', help="Run in compliant mode: respect robots.txt, skip automation scrapers and anti-bot logic.")
+    parser.add_argument('-y', '--yes', action='store_true', help="Auto-accept legal disclaimer (shows warning, waits 2 seconds, then proceeds).")
+
     group = parser.add_mutually_exclusive_group()
     group.add_argument('--only', nargs='*', help="Only run the specified scrapers (case-insensitive). Pass with no values to see choices.")
     group.add_argument('--exclude', '--except', nargs='*', help="Exclude scrapers from the run (case-insensitive). Pass with no values to see choices.")
-    
+
     args = parser.parse_args()
+
+    if not args.compliant:
+        show_legal_disclaimer(auto_accept=args.yes)
 
     all_scraper_tasks = {
         'ProxyScrape': fetch_from_api,
@@ -142,19 +188,31 @@ def main():
     general_scraper_name = 'Websites'
     all_scraper_names = sorted(list(all_scraper_tasks.keys()) + [general_scraper_name])
 
+    if args.compliant:
+        print("[INFO] Running in COMPLIANT mode - respecting robots.txt and skipping automation scrapers")
+
     if (args.only is not None and not args.only) or (args.exclude is not None and not args.exclude):
         print("Available scraper sources are:")
         print(f"  {general_scraper_name} - Websites from {SITES_FILE}")
         for name in all_scraper_names:
             if name != general_scraper_name:
-                print(f"  {name}")
+                automation_marker = " (SKIPPED in --compliant mode)" if name in AUTOMATION_SCRAPER_NAMES and args.compliant else ""
+                print(f"  {name}{automation_marker}")
         sys.exit(0)
 
     tasks_to_run = all_scraper_tasks.copy()
+
+    if args.compliant:
+        for scraper_name in AUTOMATION_SCRAPER_NAMES:
+            if scraper_name in tasks_to_run:
+                del tasks_to_run[scraper_name]
+                if args.verbose:
+                    print(f"[INFO] Skipping '{scraper_name}' in compliant mode (uses anti-bot circumvention)")
+
     try:
         scrape_targets = parse_sites_file(SITES_FILE)
         if scrape_targets:
-            tasks_to_run[general_scraper_name] = lambda verbose: scrape_proxies(scrape_targets, verbose=verbose, max_workers=args.threads)
+            tasks_to_run[general_scraper_name] = lambda verbose: scrape_proxies(scrape_targets, verbose=verbose, max_workers=args.threads, respect_robots_txt=args.compliant)
     except FileNotFoundError:
         print(f"[WARN] '{SITES_FILE}' not found. '{general_scraper_name}' scraper is unavailable.")
 

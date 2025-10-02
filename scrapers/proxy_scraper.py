@@ -4,7 +4,8 @@ import json
 import time
 from typing import List, Dict, Union, Tuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urljoin
+from urllib.robotparser import RobotFileParser
 from collections import defaultdict
 import threading
 from helper.request_utils import get_with_retry, post_with_retry
@@ -76,6 +77,34 @@ class DomainRateLimiter:
                 time.sleep(self.delay - elapsed)
             self.last_request_time[domain] = time.time()
 
+class RobotsTxtChecker:
+    """Thread-safe robots.txt checker with caching."""
+    def __init__(self):
+        self.cache = {}
+        self.lock = threading.Lock()
+
+    def is_allowed(self, url: str, user_agent: str = '*') -> bool:
+        """Check if the URL is allowed by robots.txt."""
+        parsed = urlparse(url)
+        domain = f"{parsed.scheme}://{parsed.netloc}"
+
+        with self.lock:
+            if domain not in self.cache:
+                rp = RobotFileParser()
+                robots_url = urljoin(domain, '/robots.txt')
+                try:
+                    rp.set_url(robots_url)
+                    rp.read()
+                    self.cache[domain] = rp
+                except Exception:
+                    self.cache[domain] = None
+
+        rp = self.cache[domain]
+        if rp is None:
+            return True
+
+        return rp.can_fetch(user_agent, url)
+
 def _recursive_json_search_and_extract(data: any, proxies_found: set):
     if isinstance(data, dict):
         for key in ['address', 'proxy', 'addr', 'ip_port']:
@@ -128,10 +157,15 @@ def extract_proxies_from_content(content: str, verbose: bool = False) -> set:
         if verbose and proxies_found: print("[DEBUG]  ... Found proxies via general regex fallback.")
     return proxies_found
 
-def _fetch_and_extract_single(url: str, payload: Union[Dict, None], headers: Union[Dict, None], verbose: bool, rate_limiter: DomainRateLimiter = None) -> set:
+def _fetch_and_extract_single(url: str, payload: Union[Dict, None], headers: Union[Dict, None], verbose: bool, rate_limiter: DomainRateLimiter = None, robots_checker: RobotsTxtChecker = None) -> set:
     merged_headers = DEFAULT_HEADERS.copy()
     if headers:
         merged_headers.update(headers)
+
+    if robots_checker and not robots_checker.is_allowed(url, merged_headers.get('User-Agent', '*')):
+        if verbose:
+            print(f"[INFO] Skipping {url} - blocked by robots.txt")
+        return set()
 
     if rate_limiter:
         domain = urlparse(url).netloc
@@ -146,7 +180,7 @@ def _fetch_and_extract_single(url: str, payload: Union[Dict, None], headers: Uni
     except requests.exceptions.RequestException:
         return set()
 
-def _scrape_paginated_url(base_url: str, base_payload: Union[Dict, None], base_headers: Union[Dict, None], verbose: bool, rate_limiter: DomainRateLimiter) -> Tuple[set, bool]:
+def _scrape_paginated_url(base_url: str, base_payload: Union[Dict, None], base_headers: Union[Dict, None], verbose: bool, rate_limiter: DomainRateLimiter, robots_checker: RobotsTxtChecker = None) -> Tuple[set, bool]:
     """Scrapes a single paginated URL and returns (proxies, found_any)."""
     proxies = set()
     page_num = 1
@@ -164,7 +198,7 @@ def _scrape_paginated_url(base_url: str, base_payload: Union[Dict, None], base_h
 
         if verbose: print(f"[INFO]   ... Scraping page {page_num} ({current_url})")
 
-        newly_scraped = _fetch_and_extract_single(current_url, current_payload, base_headers, verbose, rate_limiter)
+        newly_scraped = _fetch_and_extract_single(current_url, current_payload, base_headers, verbose, rate_limiter, robots_checker)
 
         if newly_scraped:
             found_any = True
@@ -184,9 +218,10 @@ def _scrape_paginated_url(base_url: str, base_payload: Union[Dict, None], base_h
     return proxies, found_any
 
 def scrape_proxies(
-    scrape_targets: List[Tuple[str, Union[Dict, None], Union[Dict, None]]], 
-    verbose: bool = False, 
-    max_workers: int = 10
+    scrape_targets: List[Tuple[str, Union[Dict, None], Union[Dict, None]]],
+    verbose: bool = False,
+    max_workers: int = 10,
+    respect_robots_txt: bool = False
 ) -> Tuple[List[str], List[str]]:
     """
     Scrapes proxies concurrently with domain-based rate limiting.
@@ -198,6 +233,7 @@ def scrape_proxies(
     paginated_targets = []
 
     rate_limiter = DomainRateLimiter(DOMAIN_RATELIMIT_DELAY)
+    robots_checker = RobotsTxtChecker() if respect_robots_txt else None
 
     for url, payload, headers in scrape_targets:
         is_paginated = "{page}" in url or ("{page}" in json.dumps(payload) if payload else False)
@@ -210,7 +246,7 @@ def scrape_proxies(
         print(f"[INFO] General Scraper: Found {len(single_req_targets)} single-request URLs")
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             future_to_url = {
-                executor.submit(_fetch_and_extract_single, url, payload, headers, verbose, rate_limiter): url
+                executor.submit(_fetch_and_extract_single, url, payload, headers, verbose, rate_limiter, robots_checker): url
                 for url, payload, headers in single_req_targets
             }
             for future in as_completed(future_to_url):
@@ -229,7 +265,7 @@ def scrape_proxies(
         print(f"[INFO] General Scraper: Found {len(paginated_targets)} paginated URLs. Scraping concurrently with domain rate limiting...")
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             future_to_url = {
-                executor.submit(_scrape_paginated_url, base_url, base_payload, base_headers, verbose, rate_limiter): base_url
+                executor.submit(_scrape_paginated_url, base_url, base_payload, base_headers, verbose, rate_limiter, robots_checker): base_url
                 for base_url, base_payload, base_headers in paginated_targets
             }
             for future in as_completed(future_to_url):
