@@ -3,20 +3,20 @@ import random
 from typing import List
 from .proxy_scraper import scrape_proxies
 
-# --- ADDED: Configuration for polite scraping ---
-# Base delay in seconds to wait between requests to the same site
 BASE_DELAY_SECONDS = 1
-# A random additional delay to make the scraping pattern less predictable
-# We will add a random float between 0.5 and 1.5 seconds to the base delay.
 RANDOM_DELAY_RANGE = (0.0, 0.0)
 
-def scrape_all_from_proxydb(verbose: bool = False) -> List[str]:
+MAX_PAGES_COMPLIANT = 2
+MAX_PAGES_AGGRESSIVE = 10
+
+def scrape_all_from_proxydb(verbose: bool = False, compliant_mode: bool = False) -> List[str]:
     """
-    Scrapes all pages from proxydb.net by iterating through offsets,
+    Scrapes pages from proxydb.net by iterating through offsets,
     with a polite delay between each page request to avoid rate-limiting.
 
     Args:
         verbose: If True, prints detailed status messages for each page.
+        compliant_mode: If True, limits scraping to MAX_PAGES_COMPLIANT pages.
 
     Returns:
         A list of all unique proxies found across all pages.
@@ -24,8 +24,13 @@ def scrape_all_from_proxydb(verbose: bool = False) -> List[str]:
     all_found_proxies = set()
     offset = 0
     page_num = 1
-    
-    while True:
+    max_pages = MAX_PAGES_COMPLIANT if compliant_mode else MAX_PAGES_AGGRESSIVE
+
+    if verbose:
+        mode_name = "compliant" if compliant_mode else "aggressive"
+        print(f"[INFO] ProxyDB: Running in {mode_name} mode (max {max_pages} pages)")
+
+    while page_num <= max_pages:
         url = f"http://proxydb.net/?offset={offset}&sort_column_id=response_time_avg"
         
         if verbose:

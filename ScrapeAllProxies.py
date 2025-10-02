@@ -173,7 +173,7 @@ def main():
     all_scraper_tasks = {
         'ProxyScrape': fetch_from_api,
         'Geonode': scrape_from_geonode_api,
-        'ProxyDB': scrape_all_from_proxydb,
+        'ProxyDB': lambda verbose: scrape_all_from_proxydb(verbose=verbose, compliant_mode=args.compliant),
         'CheckerProxy': scrape_checkerproxy_archive,
         'Spys.one': scrape_from_spysone,
         'OpenProxyList': scrape_from_openproxylist,
