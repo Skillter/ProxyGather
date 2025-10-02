@@ -127,7 +127,8 @@ def show_legal_disclaimer(auto_accept=False):
     print("")
     print("Compliant mode will:")
     print("  - Respect robots.txt directives")
-    print("  - Skip sources that require anti-bot logic or browser automation")
+    print("  - Skip sources that use anti-bot bypassing (Cloudflare Turnstile,")
+    print("    JavaScript obfuscation decoding, browser automation)")
     print("  - Significantly reduce the number of scraped proxies")
     print("="*70)
     print("")
@@ -184,26 +185,27 @@ def main():
     }
     
     AUTOMATION_SCRAPER_NAMES = ['OpenProxyList', 'Hide.mn', 'Spys.one']
+    ANTI_BOT_BYPASS_SCRAPERS = ['OpenProxyList', 'Hide.mn', 'Spys.one', 'XSEO']
     HEADFUL_SCRAPERS = ['Hide.mn', 'Spys.one']
     general_scraper_name = 'Websites'
     all_scraper_names = sorted(list(all_scraper_tasks.keys()) + [general_scraper_name])
 
     if args.compliant:
-        print("[INFO] Running in COMPLIANT mode - respecting robots.txt and skipping automation scrapers")
+        print("[INFO] Running in COMPLIANT mode - respecting robots.txt and skipping anti-bot bypass scrapers")
 
     if (args.only is not None and not args.only) or (args.exclude is not None and not args.exclude):
         print("Available scraper sources are:")
         print(f"  {general_scraper_name} - Websites from {SITES_FILE}")
         for name in all_scraper_names:
             if name != general_scraper_name:
-                automation_marker = " (SKIPPED in --compliant mode)" if name in AUTOMATION_SCRAPER_NAMES and args.compliant else ""
+                automation_marker = " (SKIPPED in --compliant mode)" if name in ANTI_BOT_BYPASS_SCRAPERS and args.compliant else ""
                 print(f"  {name}{automation_marker}")
         sys.exit(0)
 
     tasks_to_run = all_scraper_tasks.copy()
 
     if args.compliant:
-        for scraper_name in AUTOMATION_SCRAPER_NAMES:
+        for scraper_name in ANTI_BOT_BYPASS_SCRAPERS:
             if scraper_name in tasks_to_run:
                 del tasks_to_run[scraper_name]
                 if args.verbose:
