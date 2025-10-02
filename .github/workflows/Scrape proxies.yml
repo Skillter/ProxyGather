@@ -48,3 +48,4 @@ jobs:
       with:
         commit_message: "Re-scrape proxies"
         file_pattern: "proxies/scraped-proxies.txt proxies/working-proxies-*.txt" # only commit the matching files
+        push_options: '--force'
