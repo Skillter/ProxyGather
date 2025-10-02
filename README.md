@@ -9,6 +9,7 @@ If you find this project useful, **please consider giving it a star ⭐** or sha
 ### Index
 - [What Makes This Project Different?](#so-what-makes-this-project-different-from-other-proxy-scrapers)
 - [Live Proxy Lists](#live-proxy-lists)
+- [Notice](#Notice)
 - [Installation](#installation)
 - [Advanced Usage](#advanced-usage)
 - [Adding Your Own Sites](#adding-your-own-sites)
