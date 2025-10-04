@@ -37,12 +37,17 @@ jobs:
         TOTAL_COMMITS=$(git rev-list --count HEAD)
         echo "Total commits: $TOTAL_COMMITS"
 
-        # Count bot commits (any of the bot authors)
-        BOT_COMMITS=$(git log --all --oneline | grep -E "(proxy-scraper-bot|github-actions\[bot\]|actions-user)" | wc -l)
-        echo "Bot commits found: $BOT_COMMITS"
+        # Count bot commits (by author OR commit message pattern)
+        BOT_COMMITS_BY_AUTHOR=$(git log --all --format="%an" | grep -E "(proxy-scraper-bot|github-actions|actions-user)" | wc -l)
+        BOT_COMMITS_BY_MESSAGE=$(git log --all --format="%s" | grep -E "^(Re-scrape proxies|Archive traffic for)" | wc -l)
+        BOT_COMMITS=$((BOT_COMMITS_BY_AUTHOR + BOT_COMMITS_BY_MESSAGE))
+        echo "Bot commits found: $BOT_COMMITS (by author: $BOT_COMMITS_BY_AUTHOR, by message: $BOT_COMMITS_BY_MESSAGE)"
 
-        # Count human commits
-        HUMAN_COMMITS=$(git log --all --format="%H %an" | grep -v -E "(proxy-scraper-bot|github-actions\[bot\]|actions-user)" | wc -l)
+        # Count human commits (exclude both bot authors AND bot message patterns)
+        HUMAN_COMMITS=$(git log --all --format="%H|%an|%s" | \
+          grep -v -E "(proxy-scraper-bot|github-actions|actions-user)" | \
+          grep -v -E "Re-scrape proxies|Archive traffic for" | \
+          wc -l)
         echo "Human commits found: $HUMAN_COMMITS"
 
         if [ "$HUMAN_COMMITS" -eq 0 ]; then
@@ -52,8 +57,11 @@ jobs:
           exit 0
         fi
 
-        # Find the most recent human commit
-        LAST_HUMAN_COMMIT=$(git log --all --format="%H %an" | grep -v -E "(proxy-scraper-bot|github-actions\[bot\]|actions-user)" | head -1 | awk '{print $1}')
+        # Find the most recent human commit (exclude bot authors AND bot message patterns)
+        LAST_HUMAN_COMMIT=$(git log --all --format="%H|%an|%s" | \
+          grep -v -E "(proxy-scraper-bot|github-actions|actions-user)" | \
+          grep -v -E "Re-scrape proxies|Archive traffic for" | \
+          head -1 | cut -d'|' -f1)
         LAST_HUMAN_AUTHOR=$(git log -1 --format="%an" $LAST_HUMAN_COMMIT)
         LAST_HUMAN_DATE=$(git log -1 --format="%ai" $LAST_HUMAN_COMMIT)
         LAST_HUMAN_MSG=$(git log -1 --format="%s" $LAST_HUMAN_COMMIT)
@@ -134,7 +142,11 @@ jobs:
         echo "Step 3: Replaying human commits in order..."
 
         # Get list of all human commit hashes in reverse order (oldest first)
-        HUMAN_COMMITS=$(git log --all --reverse --format="%H %an" | grep -v -E "(proxy-scraper-bot|github-actions\[bot\]|actions-user)" | awk '{print $1}')
+        # Exclude both bot authors AND bot message patterns
+        HUMAN_COMMITS=$(git log --all --reverse --format="%H|%an|%s" | \
+          grep -v -E "(proxy-scraper-bot|github-actions|actions-user)" | \
+          grep -v -E "Re-scrape proxies|Archive traffic for" | \
+          cut -d'|' -f1)
 
         COMMIT_COUNT=0
         for COMMIT_HASH in $HUMAN_COMMITS; do
