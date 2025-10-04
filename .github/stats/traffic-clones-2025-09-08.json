@@ -1,0 +1,76 @@
+{
+  "count": 1608,
+  "uniques": 131,
+  "clones": [
+    {
+      "timestamp": "2025-08-25T00:00:00Z",
+      "count": 107,
+      "uniques": 27
+    },
+    {
+      "timestamp": "2025-08-26T00:00:00Z",
+      "count": 108,
+      "uniques": 26
+    },
+    {
+      "timestamp": "2025-08-27T00:00:00Z",
+      "count": 140,
+      "uniques": 32
+    },
+    {
+      "timestamp": "2025-08-28T00:00:00Z",
+      "count": 111,
+      "uniques": 18
+    },
+    {
+      "timestamp": "2025-08-29T00:00:00Z",
+      "count": 122,
+      "uniques": 27
+    },
+    {
+      "timestamp": "2025-08-30T00:00:00Z",
+      "count": 81,
+      "uniques": 30
+    },
+    {
+      "timestamp": "2025-08-31T00:00:00Z",
+      "count": 164,
+      "uniques": 23
+    },
+    {
+      "timestamp": "2025-09-01T00:00:00Z",
+      "count": 98,
+      "uniques": 24
+    },
+    {
+      "timestamp": "2025-09-02T00:00:00Z",
+      "count": 112,
+      "uniques": 18
+    },
+    {
+      "timestamp": "2025-09-03T00:00:00Z",
+      "count": 95,
+      "uniques": 21
+    },
+    {
+      "timestamp": "2025-09-04T00:00:00Z",
+      "count": 66,
+      "uniques": 21
+    },
+    {
+      "timestamp": "2025-09-05T00:00:00Z",
+      "count": 179,
+      "uniques": 22
+    },
+    {
+      "timestamp": "2025-09-06T00:00:00Z",
+      "count": 107,
+      "uniques": 28
+    },
+    {
+      "timestamp": "2025-09-07T00:00:00Z",
+      "count": 118,
+      "uniques": 29
+    }
+  ]
+}
