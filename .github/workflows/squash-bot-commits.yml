@@ -134,23 +134,27 @@ jobs:
           exit 0
         fi
 
-        # Step 1: Create a new orphan branch
-        echo "Step 1: Creating new orphan branch 'new-master'..."
+        # Step 1: Get list of all human commit hashes BEFORE creating orphan branch
+        echo "Step 1: Identifying human commits to preserve..."
+        # Get list from master branch (oldest first)
+        HUMAN_COMMITS=$(git log master --reverse --format="%H|%an|%s" | \
+          grep -v -E "(proxy-scraper-bot|github-actions|actions-user)" | \
+          grep -v -E "^[^|]+\|[^|]+\|(Re-scrape proxies|Update Archive traffic data\.yml|auto archive traffic stats|Archive traffic for)$" | \
+          cut -d'|' -f1)
+
+        HUMAN_COUNT=$(echo "$HUMAN_COMMITS" | grep -c "^")
+        echo "  Found $HUMAN_COUNT human commits to replay"
+
+        # Step 2: Create a new orphan branch
+        echo "Step 2: Creating new orphan branch 'new-master'..."
         git checkout --orphan new-master
 
-        # Step 2: Remove all files from staging
-        echo "Step 2: Clearing staging area..."
+        # Step 3: Remove all files from staging
+        echo "Step 3: Clearing staging area..."
         git rm -rf . --quiet
 
-        # Step 3: Cherry-pick all human commits in chronological order
-        echo "Step 3: Replaying human commits in order..."
-
-        # Get list of all human commit hashes in reverse order (oldest first)
-        # Exclude bot authors AND automated message patterns
-        HUMAN_COMMITS=$(git log --reverse --format="%H|%an|%s" | \
-          grep -v -E "(proxy-scraper-bot|github-actions|actions-user)" | \
-          grep -v -E "^[^|]+\|[^|]+\|(Re-scrape proxies|Archive traffic for)$" | \
-          cut -d'|' -f1)
+        # Step 4: Cherry-pick all human commits in chronological order
+        echo "Step 4: Replaying human commits in order..."
 
         COMMIT_COUNT=0
         for COMMIT_HASH in $HUMAN_COMMITS; do
@@ -188,8 +192,8 @@ jobs:
 
         echo "  Replayed $COMMIT_COUNT human commits"
 
-        # Step 4: Add current proxy files as a single squashed commit
-        echo "Step 4: Adding current proxy files..."
+        # Step 5: Add current proxy files as a single squashed commit
+        echo "Step 5: Adding current proxy files..."
         git checkout master -- working-proxies/ scraped-proxies.txt 2>/dev/null || true
         git add -A
 
@@ -203,18 +207,18 @@ jobs:
                      --allow-empty
         fi
 
-        # Step 5: Replace master branch
-        echo "Step 5: Replacing master branch..."
+        # Step 6: Replace master branch
+        echo "Step 6: Replacing master branch..."
         git branch -D master
         git branch -m master
 
-        # Step 6: Verify the new history before pushing
-        echo "Step 6: Verifying new history..."
+        # Step 7: Verify the new history before pushing
+        echo "Step 7: Verifying new history..."
         NEW_TOTAL=$(git rev-list --count HEAD)
-        NEW_BOT=$(git log --format="%an|%s" | grep -E "(proxy-scraper-bot|github-actions|actions-user)|^[^|]+\|(Re-scrape proxies|Archive traffic for)$" | wc -l)
+        NEW_BOT=$(git log --format="%an|%s" | grep -E "(proxy-scraper-bot|github-actions|actions-user)|^[^|]+\|(Re-scrape proxies|Update Archive traffic data\.yml|auto archive traffic stats|Archive traffic for)$" | wc -l)
         NEW_HUMAN=$(git log --format="%an|%s" | \
           grep -v -E "(proxy-scraper-bot|github-actions|actions-user)" | \
-          grep -v -E "^[^|]+\|(Re-scrape proxies|Archive traffic for)$" | \
+          grep -v -E "^[^|]+\|(Re-scrape proxies|Update Archive traffic data\.yml|auto archive traffic stats|Archive traffic for)$" | \
           wc -l)
 
         echo "  New commit count: $NEW_TOTAL"
@@ -233,8 +237,8 @@ jobs:
           echo "   This may indicate cherry-pick failures. Proceeding anyway..."
         fi
 
-        # Step 7: Force push
-        echo "Step 7: Force pushing to origin..."
+        # Step 8: Force push
+        echo "Step 8: Force pushing to origin..."
         git push origin master --force
 
         echo ""
