@@ -1,0 +1,160 @@
+name: Squash Bot Commits History
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run (show what would be done without executing)'
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+jobs:
+  squash-history:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository with full history
+      uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        fetch-depth: 0  # Full history needed
+
+    - name: Configure Git
+      run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+
+    - name: Analyze bot commits
+      id: analyze
+      run: |
+        echo "=== Analyzing repository history ==="
+
+        # Count all commits
+        TOTAL_COMMITS=$(git rev-list --count HEAD)
+        echo "Total commits: $TOTAL_COMMITS"
+
+        # Count bot commits (any of the bot authors)
+        BOT_COMMITS=$(git log --all --author="proxy-scraper-bot\|github-actions\[bot\]\|actions-user" --oneline | wc -l)
+        echo "Bot commits: $BOT_COMMITS"
+
+        # Find last human commit
+        LAST_HUMAN_COMMIT=$(git log --all \
+          --author-not="proxy-scraper-bot" \
+          --author-not="github-actions[bot]" \
+          --author-not="actions-user" \
+          --format="%H" -1 2>/dev/null)
+
+        if [ -n "$LAST_HUMAN_COMMIT" ]; then
+          LAST_HUMAN_MSG=$(git log -1 --format="%s" $LAST_HUMAN_COMMIT)
+          LAST_HUMAN_DATE=$(git log -1 --format="%ai" $LAST_HUMAN_COMMIT)
+          LAST_HUMAN_AUTHOR=$(git log -1 --format="%an" $LAST_HUMAN_COMMIT)
+
+          echo "Last human commit: $LAST_HUMAN_COMMIT"
+          echo "  Author: $LAST_HUMAN_AUTHOR"
+          echo "  Date: $LAST_HUMAN_DATE"
+          echo "  Message: $LAST_HUMAN_MSG"
+
+          # Count commits since last human commit
+          COMMITS_SINCE=$(git rev-list --count ${LAST_HUMAN_COMMIT}..HEAD)
+          echo "Commits since last human commit: $COMMITS_SINCE"
+        else
+          echo "WARNING: No human commits found!"
+          LAST_HUMAN_COMMIT=""
+          COMMITS_SINCE=0
+        fi
+
+        # Export for next steps
+        echo "bot_commits=$BOT_COMMITS" >> $GITHUB_OUTPUT
+        echo "last_human_commit=$LAST_HUMAN_COMMIT" >> $GITHUB_OUTPUT
+        echo "commits_since=$COMMITS_SINCE" >> $GITHUB_OUTPUT
+
+        # Calculate estimated size reduction
+        echo ""
+        echo "=== Repository Size ==="
+        du -sh .git
+
+    - name: Squash bot commits (dry run)
+      if: inputs.dry_run == true
+      run: |
+        echo "=== DRY RUN MODE ==="
+        echo "This is what would happen if dry_run was set to false:"
+        echo ""
+
+        if [ -z "${{ steps.analyze.outputs.last_human_commit }}" ]; then
+          echo "   Cannot squash: No human commits found"
+          echo "   The entire history appears to be bot commits."
+          echo "   Manual intervention required."
+          exit 1
+        fi
+
+        if [ "${{ steps.analyze.outputs.commits_since }}" -lt 5 ]; then
+          echo "   Only ${{ steps.analyze.outputs.commits_since }} commits since last human commit"
+          echo "   Threshold is 5+ commits. No action needed."
+          exit 0
+        fi
+
+        echo "   Would squash ${{ steps.analyze.outputs.commits_since }} bot commits"
+        echo "   Would preserve all commits up to: ${{ steps.analyze.outputs.last_human_commit }}"
+        echo "   Would force push to master branch"
+        echo ""
+        echo "To execute this, re-run with dry_run set to false"
+
+    - name: Squash bot commits (execute)
+      if: inputs.dry_run == false
+      run: |
+        echo "=== EXECUTING SQUASH ==="
+
+        LAST_HUMAN="${{ steps.analyze.outputs.last_human_commit }}"
+
+        if [ -z "$LAST_HUMAN" ]; then
+          echo "   Cannot squash: No human commits found"
+          exit 1
+        fi
+
+        if [ "${{ steps.analyze.outputs.commits_since }}" -lt 5 ]; then
+          echo "   Only ${{ steps.analyze.outputs.commits_since }} commits to squash"
+          echo "   Threshold is 5+. Skipping."
+          exit 0
+        fi
+
+        echo "Creating new branch from last human commit: $LAST_HUMAN"
+        git checkout -b temp-squash $LAST_HUMAN
+
+        echo "Applying current state of all files..."
+        git checkout master -- . || true
+
+        echo "Staging all changes..."
+        git add -A
+
+        echo "Creating squashed commit..."
+        TIMESTAMP=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
+        git commit -m "Squashed bot commits - $TIMESTAMP" --allow-empty
+
+        echo "Replacing master branch..."
+        git branch -D master
+        git branch -m master
+
+        echo "Force pushing to remote..."
+        git push origin master --force
+
+        echo "   Successfully squashed ${{ steps.analyze.outputs.commits_since }} bot commits!"
+        echo "   Repository history cleaned"
+
+    - name: Summary
+      if: always()
+      run: |
+        echo ""
+        echo "=== Summary ==="
+        echo "Bot commits found: ${{ steps.analyze.outputs.bot_commits }}"
+        echo "Commits squashed: ${{ steps.analyze.outputs.commits_since }}"
+        echo "Dry run: ${{ inputs.dry_run }}"
+
+        if [ "${{ inputs.dry_run }}" = "true" ]; then
+          echo ""
+          echo "This was a dry run. No changes were made."
+          echo "Review the output above and re-run with dry_run=false to execute."
+        fi
