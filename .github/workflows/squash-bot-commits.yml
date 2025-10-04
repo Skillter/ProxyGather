@@ -37,12 +37,21 @@ jobs:
         TOTAL_COMMITS=$(git rev-list --count HEAD)
         echo "Total commits: $TOTAL_COMMITS"
 
-        # Count bot commits (by author only - message filtering removed as it was too broad)
-        BOT_COMMITS=$(git log --format="%an" | grep -E "(proxy-scraper-bot|github-actions|actions-user)" | wc -l)
-        echo "Bot commits found: $BOT_COMMITS"
+        # Count bot commits (by author OR automated message patterns)
+        BOT_COMMITS_BY_AUTHOR=$(git log --format="%an" | grep -E "(proxy-scraper-bot|github-actions|actions-user)" | wc -l)
 
-        # Count human commits (exclude only bot authors)
-        HUMAN_COMMITS=$(git log --format="%an" | grep -v -E "(proxy-scraper-bot|github-actions|actions-user)" | wc -l)
+        # Count automated commits by message (precise patterns only)
+        BOT_COMMITS_BY_MESSAGE=$(git log --format="%s" | grep -E "^(Re-scrape proxies|Archive traffic for)$" | wc -l)
+
+        # Total bot commits (avoid double counting - some may match both)
+        BOT_COMMITS=$(git log --format="%an|%s" | grep -E "(proxy-scraper-bot|github-actions|actions-user)|^[^|]+\|(Re-scrape proxies|Archive traffic for)$" | wc -l)
+        echo "Bot commits found: $BOT_COMMITS (by author: $BOT_COMMITS_BY_AUTHOR, by message: $BOT_COMMITS_BY_MESSAGE)"
+
+        # Count human commits (exclude both bot authors AND automated message patterns)
+        HUMAN_COMMITS=$(git log --format="%an|%s" | \
+          grep -v -E "(proxy-scraper-bot|github-actions|actions-user)" | \
+          grep -v -E "^[^|]+\|(Re-scrape proxies|Archive traffic for)$" | \
+          wc -l)
         echo "Human commits found: $HUMAN_COMMITS"
 
         if [ "$HUMAN_COMMITS" -eq 0 ]; then
@@ -52,9 +61,10 @@ jobs:
           exit 0
         fi
 
-        # Find the most recent human commit (exclude only bot authors)
-        LAST_HUMAN_COMMIT=$(git log --format="%H|%an" | \
+        # Find the most recent human commit (exclude bot authors AND automated messages)
+        LAST_HUMAN_COMMIT=$(git log --format="%H|%an|%s" | \
           grep -v -E "(proxy-scraper-bot|github-actions|actions-user)" | \
+          grep -v -E "^[^|]+\|[^|]+\|(Re-scrape proxies|Archive traffic for)$" | \
           head -1 | cut -d'|' -f1)
         LAST_HUMAN_AUTHOR=$(git log -1 --format="%an" $LAST_HUMAN_COMMIT)
         LAST_HUMAN_DATE=$(git log -1 --format="%ai" $LAST_HUMAN_COMMIT)
@@ -136,9 +146,10 @@ jobs:
         echo "Step 3: Replaying human commits in order..."
 
         # Get list of all human commit hashes in reverse order (oldest first)
-        # Exclude only bot authors (not by message, as humans also manually re-scrape)
-        HUMAN_COMMITS=$(git log --reverse --format="%H|%an" | \
+        # Exclude bot authors AND automated message patterns
+        HUMAN_COMMITS=$(git log --reverse --format="%H|%an|%s" | \
           grep -v -E "(proxy-scraper-bot|github-actions|actions-user)" | \
+          grep -v -E "^[^|]+\|[^|]+\|(Re-scrape proxies|Archive traffic for)$" | \
           cut -d'|' -f1)
 
         COMMIT_COUNT=0
@@ -200,15 +211,18 @@ jobs:
         # Step 6: Verify the new history before pushing
         echo "Step 6: Verifying new history..."
         NEW_TOTAL=$(git rev-list --count HEAD)
-        NEW_BOT=$(git log --format="%an" | grep -E "(proxy-scraper-bot|github-actions|actions-user)" | wc -l)
-        NEW_HUMAN=$(git log --format="%an" | grep -v -E "(proxy-scraper-bot|github-actions|actions-user)" | wc -l)
+        NEW_BOT=$(git log --format="%an|%s" | grep -E "(proxy-scraper-bot|github-actions|actions-user)|^[^|]+\|(Re-scrape proxies|Archive traffic for)$" | wc -l)
+        NEW_HUMAN=$(git log --format="%an|%s" | \
+          grep -v -E "(proxy-scraper-bot|github-actions|actions-user)" | \
+          grep -v -E "^[^|]+\|(Re-scrape proxies|Archive traffic for)$" | \
+          wc -l)
 
         echo "  New commit count: $NEW_TOTAL"
         echo "  Bot commits: $NEW_BOT"
         echo "  Human commits: $NEW_HUMAN"
 
         if [ "$NEW_BOT" -gt 5 ]; then
-          echo "   ERROR: New history still contains $NEW_BOT bot commits by author!"
+          echo "   ERROR: New history still contains $NEW_BOT bot commits!"
           echo "   Something went wrong. Aborting push."
           exit 1
         fi
