@@ -236,8 +236,9 @@ def main():
         sys.exit(1)
 
     automation_tasks_present = any(name in tasks_to_run for name in AUTOMATION_SCRAPER_NAMES)
+    headful_tasks_present = any(name in tasks_to_run for name in HEADFUL_SCRAPERS)
 
-    if sys.platform == "linux" and not os.environ.get('DISPLAY'):
+    if headful_tasks_present and sys.platform == "linux" and not os.environ.get('DISPLAY'):
         print("[INFO] Linux/WSL detected. Checking for xvfb-run...")
         if shutil.which("xvfb-run"):
             print("[INFO] xvfb-run found. Re-launching inside a virtual display...")
@@ -245,7 +246,7 @@ def main():
             subprocess.run(command)
             sys.exit(0)
         else:
-            print("\n[ERROR] xvfb-run is required for browser automation on headless Linux/WSL but is not installed.")
+            print("\n[ERROR] xvfb-run is required for headful browser automation on headless Linux/WSL but is not installed.")
             print("Please install it: sudo apt-get update && sudo apt-get install -y xvfb")
             sys.exit(1)
     
