@@ -41,12 +41,12 @@ jobs:
         BOT_COMMITS=$(git log --all --author="proxy-scraper-bot\|github-actions\[bot\]\|actions-user" --oneline | wc -l)
         echo "Bot commits: $BOT_COMMITS"
 
-        # Find last human commit
-        LAST_HUMAN_COMMIT=$(git log --all \
-          --author-not="proxy-scraper-bot" \
-          --author-not="github-actions[bot]" \
-          --author-not="actions-user" \
-          --format="%H" -1 2>/dev/null)
+        # Find last human commit (exclude bot authors)
+        LAST_HUMAN_COMMIT=$(git log --all --format="%H %an" | \
+          grep -v "proxy-scraper-bot" | \
+          grep -v "github-actions\[bot\]" | \
+          grep -v "actions-user" | \
+          head -1 | awk '{print $1}')
 
         if [ -n "$LAST_HUMAN_COMMIT" ]; then
           LAST_HUMAN_MSG=$(git log -1 --format="%s" $LAST_HUMAN_COMMIT)
