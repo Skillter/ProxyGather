@@ -204,13 +204,30 @@ jobs:
         git branch -D master
         git branch -m master
 
-        # Step 6: Force push
-        echo "Step 6: Force pushing to origin..."
+        # Step 6: Verify the new history before pushing
+        echo "Step 6: Verifying new history..."
+        NEW_TOTAL=$(git rev-list --count HEAD)
+        NEW_BOT=$(git log --all --format="%an" | grep -E "(proxy-scraper-bot|github-actions|actions-user)" | wc -l)
+        NEW_BOT_MSG=$(git log --all --format="%s" | grep -E "^(Re-scrape proxies|Archive traffic for)" | wc -l)
+
+        echo "  New commit count: $NEW_TOTAL"
+        echo "  Bot commits by author: $NEW_BOT"
+        echo "  Bot commits by message: $NEW_BOT_MSG"
+
+        if [ "$NEW_BOT_MSG" -gt 10 ]; then
+          echo "   ERROR: New history still contains $NEW_BOT_MSG bot message patterns!"
+          echo "   Something went wrong. Aborting push."
+          exit 1
+        fi
+
+        # Step 7: Force push
+        echo "Step 7: Force pushing to origin..."
         git push origin master --force
 
         echo ""
         echo "   Successfully squashed ${{ steps.analyze.outputs.bot_commits }} bot commits!"
         echo "   Preserved ${{ steps.analyze.outputs.human_commits }} human commits"
+        echo "   New history has $NEW_TOTAL total commits"
         echo "   Repository history cleaned"
 
     - name: Summary
