@@ -192,17 +192,18 @@ jobs:
 
         echo "  Replayed $COMMIT_COUNT human commits"
 
-        # Step 5: Add current proxy files as a single squashed commit
-        echo "Step 5: Adding current proxy files..."
-        git checkout master -- working-proxies/ scraped-proxies.txt 2>/dev/null || true
+        # Step 5: Add all current files from master as a single squashed commit
+        echo "Step 5: Adding all current files from master branch..."
+        git checkout master -- . 2>/dev/null || true
         git add -A
 
         if git diff --cached --quiet; then
-          echo "  No proxy file changes to commit"
+          echo "  No additional files to commit"
         else
           TIMESTAMP=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
           git commit -m "Squashed bot data - $TIMESTAMP" \
-                     -m "This commit contains all proxy data from ${{ steps.analyze.outputs.bot_commits }} bot commits." \
+                     -m "This commit contains all bot-generated data from ${{ steps.analyze.outputs.bot_commits }} bot commits." \
+                     -m "Includes: proxy lists, traffic statistics, and any other automated data files." \
                      -m "Original bot commit history has been removed to reduce repository size." \
                      --allow-empty
         fi
