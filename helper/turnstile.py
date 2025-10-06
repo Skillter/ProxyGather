@@ -215,89 +215,106 @@ def is_turnstile_checkbox_ready(sb: BaseCase, timeout: int = 20) -> bool:
     """
     Detects if Cloudflare Turnstile checkbox is ready to be clicked.
     Returns True if the checkbox/widget is visible and interactive, False otherwise.
+    Handles shadow DOM nested structures.
     """
     start_time = time.time()
 
     while time.time() - start_time < timeout:
         try:
             ready_check = sb.execute_script("""
-                function findTurnstileCheckbox() {
-                    const iframes = document.querySelectorAll('iframe[src*="challenges.cloudflare.com"], iframe[src*="turnstile"]');
-                    for (let iframe of iframes) {
-                        try {
-                            const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
-                            if (iframeDoc) {
-                                const checkbox = iframeDoc.querySelector('input[type="checkbox"]');
-                                if (checkbox && !checkbox.checked) {
-                                    const style = window.getComputedStyle(checkbox);
-                                    if (style.display !== 'none' && style.visibility !== 'hidden') {
+                function searchShadowDOM(root, maxDepth = 5, currentDepth = 0) {
+                    if (currentDepth > maxDepth) return null;
+
+                    const elements = root.querySelectorAll('*');
+                    for (let el of elements) {
+                        if (el.shadowRoot) {
+                            const checkbox = el.shadowRoot.querySelector('input[type="checkbox"]');
+                            if (checkbox && !checkbox.checked) {
+                                const style = window.getComputedStyle(checkbox);
+                                const parent = checkbox.closest('.cb-c, [role="alert"]');
+                                if (parent) {
+                                    const parentStyle = window.getComputedStyle(parent);
+                                    if (parentStyle.display !== 'none' &&
+                                        parentStyle.visibility !== 'hidden' &&
+                                        parseFloat(parentStyle.opacity) > 0) {
                                         return true;
                                     }
                                 }
                             }
-                        } catch (e) {
-                        }
-                    }
 
-                    const widgetContainers = document.querySelectorAll(
-                        '.cf-turnstile, [class*="cf-turnstile"], [data-turnstile-widget], [data-cf-turnstile]'
-                    );
-                    for (let container of widgetContainers) {
-                        const style = window.getComputedStyle(container);
-                        if (style.display !== 'none' && style.visibility !== 'hidden' && parseFloat(style.opacity) > 0) {
-                            const rect = container.getBoundingClientRect();
-                            if (rect.width > 0 && rect.height > 0) {
-                                const hasSuccessIcon = container.querySelector('#success-icon, .success-icon, [class*="success"]');
-                                if (!hasSuccessIcon) {
-                                    return true;
+                            const verifyText = el.shadowRoot.querySelector('.cb-lb-t');
+                            if (verifyText && verifyText.textContent.includes('Verify')) {
+                                const container = verifyText.closest('.cb-c');
+                                if (container) {
+                                    const style = window.getComputedStyle(container);
+                                    if (style.display !== 'none' &&
+                                        style.visibility !== 'hidden') {
+                                        return true;
+                                    }
                                 }
                             }
+
+                            const result = searchShadowDOM(el.shadowRoot, maxDepth, currentDepth + 1);
+                            if (result) return true;
                         }
                     }
-
-                    const checkboxSpan = document.querySelector('span[class*="checkbox"]');
-                    if (checkboxSpan) {
-                        const style = window.getComputedStyle(checkboxSpan);
-                        if (style.display !== 'none' && style.visibility !== 'hidden') {
-                            const parent = checkboxSpan.closest('.cf-turnstile, [class*="turnstile"], iframe');
-                            if (parent) {
-                                return true;
-                            }
-                        }
-                    }
-
                     return false;
                 }
 
-                return findTurnstileCheckbox();
-            """)
+                function checkIframesForTurnstile() {
+                    const iframes = document.querySelectorAll('iframe[src*="challenges.cloudflare.com"], iframe[src*="turnstile"]');
+                    for (let iframe of iframes) {
+                        const rect = iframe.getBoundingClientRect();
+                        const style = window.getComputedStyle(iframe);
 
-            if ready_check:
-                checkbox_selectors = [
-                    'iframe[src*="challenges.cloudflare.com"]',
-                    'iframe[src*="turnstile"]',
-                    '.cf-turnstile',
-                    '[class*="cf-turnstile"]',
-                    '[data-turnstile-widget]',
-                ]
+                        if (rect.width > 0 && rect.height > 0 &&
+                            style.display !== 'none' &&
+                            style.visibility !== 'hidden' &&
+                            parseFloat(style.opacity) > 0) {
 
-                for selector in checkbox_selectors:
-                    try:
-                        if sb.is_element_visible(selector, timeout=0.5):
-                            element = sb.find_element(selector)
-                            if element.size['width'] > 0 and element.size['height'] > 0:
-                                return True
-                    except:
-                        continue
+                            try {
+                                const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
+                                if (iframeDoc) {
+                                    if (searchShadowDOM(iframeDoc)) {
+                                        return true;
+                                    }
 
-                return True
+                                    const successVisible = iframeDoc.querySelector('#success');
+                                    if (successVisible) {
+                                        const successStyle = window.getComputedStyle(successVisible);
+                                        if (successStyle.display !== 'none' &&
+                                            parseFloat(successStyle.opacity) > 0) {
+                                            return false;
+                                        }
+                                    }
 
-        except Exception:
-            pass
+                                    const checkboxContainer = iframeDoc.querySelector('.cb-c, #PZGgl8');
+                                    if (checkboxContainer) {
+                                        const containerStyle = window.getComputedStyle(checkboxContainer);
+                                        if (containerStyle.display !== 'none' &&
+                                            containerStyle.visibility !== 'hidden') {
+                                            return true;
+                                        }
+                                    }
+                                }
+                            } catch (e) {
+                            }
 
-        try:
-            visible_widget = sb.execute_script("""
-                const widgets = document.querySelectorAll('.cf-turnstile, [data-turnstile-widget]');
+                            return true;
+                        }
+                    }
+                    return false;
+                }
+
+                if (searchShadowDOM(document)) {
+                    return true;
+                }
+
+                if (checkIframesForTurnstile()) {
+                    return true;
+                }
+
+                const widgets = document.querySelectorAll('.cf-turnstile, [class*="cf-turnstile"], [data-turnstile-widget]');
                 for (let widget of widgets) {
                     const rect = widget.getBoundingClientRect();
                     const style = window.getComputedStyle(widget);
@@ -308,25 +325,21 @@ def is_turnstile_checkbox_ready(sb: BaseCase, timeout: int = 20) -> bool:
                         parseFloat(style.opacity) > 0) {
 
                         const hasResponse = widget.querySelector('input[name="cf-turnstile-response"]');
-                        if (hasResponse && hasResponse.value.length > 0) {
-                            return false;
-                        }
-
-                        const hasSuccess = widget.querySelector('#success-icon, .success-icon');
-                        if (hasSuccess) {
-                            return false;
+                        if (hasResponse && hasResponse.value && hasResponse.value.length > 0) {
+                            continue;
                         }
 
                         return true;
                     }
                 }
+
                 return false;
             """)
 
-            if visible_widget:
+            if ready_check:
                 return True
 
-        except:
+        except Exception:
             pass
 
         sb.sleep(0.3)
