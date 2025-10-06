@@ -32,7 +32,7 @@ def _solve_challenge_and_get_creds(sb: BaseCase, url: str, verbose: bool) -> dic
         except Exception as e:
             if verbose:
                 print("[SUCCESS] Hide.mn: First challenge solving failed, trying alternative method.")
-            sb.uc_gui_handle_cf
+            sb.uc_gui_handle_cf()
             if verbose:
                 print("[INFO] Hide.mn: Waiting for the table element...")  
             sb.wait_for_element_present(selector='.table_block > table:nth-child(1)', timeout=20)
