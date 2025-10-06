@@ -1,5 +1,4 @@
 import time
-from py import log
 import requests
 from typing import List
 from seleniumbase import BaseCase
