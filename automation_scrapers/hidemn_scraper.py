@@ -25,7 +25,16 @@ def _solve_challenge_and_get_creds(sb: BaseCase, url: str, verbose: bool) -> dic
                 print("[INFO] Hide.mn: Cloudflare challenge detected. Attempting to solve...")
             sb.uc_gui_click_captcha()
         
-        sb.wait_for_element_present(selector='.table_block > table:nth-child(1)', timeout=20)
+        
+        # sb.wait_for_element_present(selector='.table_block > table:nth-child(1)', timeout=20)
+        try:
+            sb.wait_for_element_present(selector='.table_block > table:nth-child(1)', timeout=20)
+        except Exception as e:
+            if verbose:
+                print("[SUCCESS] Hide.mn: First challenge solving failed, trying alternative method.")
+            sb.uc_gui_handle_cf
+            sb.wait_for_element_present(selector='.table_block > table:nth-child(1)', timeout=20)
+        
         if verbose:
             print("[SUCCESS] Hide.mn: Challenge solved or bypassed. Table is present.")
         
