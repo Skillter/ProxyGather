@@ -9,7 +9,7 @@ from scrapers.proxy_scraper import extract_proxies_from_content
 BROWSER_VISIT_URL = "https://openproxylist.com/proxy/"
 POST_TARGET_URL = "https://openproxylist.com/get-list.html"
 
-def scrape_from_openproxylist(sb: BaseCase, verbose: bool = True) -> List[str]:
+def scrape_from_openproxylist(sb: BaseCase, verbose: bool = True, turnstile_delay: float = 0) -> List[str]:
     """
     Scrapes OpenProxyList using its own dedicated browser instance.
     """

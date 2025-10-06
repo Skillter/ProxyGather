@@ -9,18 +9,22 @@ from scrapers.proxy_scraper import extract_proxies_from_content
 URL_TEMPLATE = "https://hide.mn/en/proxy-list/?start={offset}"
 DELAY_SECONDS = 1.5
 
-def _solve_challenge_and_get_creds(sb: BaseCase, url: str, verbose: bool) -> dict:
+def _solve_challenge_and_get_creds(sb: BaseCase, url: str, verbose: bool, turnstile_delay: float = 0) -> dict:
     """
     Uses the browser to solve a Cloudflare challenge on a given URL
     and returns the necessary cookies and user-agent for direct requests.
     """
     if verbose:
         print(f"[INFO] Hide.mn: Using browser to access {url}...")
-    
+
     sb.open(url)
-    
+
     try:
-        if turnstile.is_turnstile_checkbox_ready(sb):
+        if turnstile.is_turnstile_present(sb):
+            if turnstile_delay > 0:
+                if verbose:
+                    print(f"[INFO] Hide.mn: --turnstile-delay present. Waiting {turnstile_delay} seconds for Turnstile to load...")
+                time.sleep(turnstile_delay)
             if verbose:
                 print("[INFO] Hide.mn: Cloudflare challenge detected. Attempting to solve...")
             sb.uc_gui_click_captcha()
@@ -63,20 +67,20 @@ def _solve_challenge_and_get_creds(sb: BaseCase, url: str, verbose: bool) -> dic
             print(f"[ERROR] Hide.mn: Failed to solve challenge or extract credentials: {e}")
         return {}
 
-def scrape_from_hidemn(sb: BaseCase, verbose: bool = True) -> List[str]:
+def scrape_from_hidemn(sb: BaseCase, verbose: bool = True, turnstile_delay: float = 0) -> List[str]:
     """
     Scrapes hide.mn by first using a browser to solve Cloudflare, then
     switching to direct requests with the obtained session cookies.
     """
     if verbose:
         print("[RUNNING] 'Hide.mn' automation scraper has started.")
-    
+
     all_proxies = set()
     session = requests.Session()
-    
+
     try:
         initial_url = URL_TEMPLATE.format(offset=0)
-        creds = _solve_challenge_and_get_creds(sb, initial_url, verbose)
+        creds = _solve_challenge_and_get_creds(sb, initial_url, verbose, turnstile_delay)
         
         if not creds:
             print("[ERROR] Hide.mn: Could not get initial Cloudflare credentials. Aborting.")
@@ -105,8 +109,8 @@ def scrape_from_hidemn(sb: BaseCase, verbose: bool = True) -> List[str]:
                 if 'Verifying you are human' in page_content or 'challenges.cloudflare.com' in page_content:
                     if verbose:
                         print("[WARN] Hide.mn: Cloudflare challenge re-appeared. Re-solving with browser...")
-                    
-                    new_creds = _solve_challenge_and_get_creds(sb, url, verbose)
+
+                    new_creds = _solve_challenge_and_get_creds(sb, url, verbose, turnstile_delay)
                     if not new_creds:
                         print("[ERROR] Hide.mn: Failed to re-solve challenge. Aborting.")
                         break

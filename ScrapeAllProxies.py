@@ -65,7 +65,7 @@ def parse_sites_file(filename: str) -> List[Tuple[str, Union[Dict, None], Union[
             scrape_targets.append((url, payload, headers))
     return scrape_targets
 
-def run_automation_task(scraper_name: str, scraper_func, verbose_flag: bool, is_headful: bool):
+def run_automation_task(scraper_name: str, scraper_func, verbose_flag: bool, is_headful: bool, turnstile_delay: float = 0):
     """
     A wrapper to run a single automation scraper in its own browser instance,
     with a dedicated, temporary user profile to ensure isolation.
@@ -79,7 +79,7 @@ def run_automation_task(scraper_name: str, scraper_func, verbose_flag: bool, is_
             disable_csp=True,
             user_data_dir=temp_dir
         ) as sb:
-            return scraper_func(sb, verbose=verbose_flag)
+            return scraper_func(sb, verbose=verbose_flag, turnstile_delay=turnstile_delay)
     except Exception as e:
         print(f"[ERROR] {scraper_name} scraper failed: {e}")
         return []
@@ -156,6 +156,7 @@ def main():
     parser.add_argument('--output', default=DEFAULT_OUTPUT_FILE, help=f"The output file for scraped proxies. Defaults to '{DEFAULT_OUTPUT_FILE}'.")
     parser.add_argument('--threads', type=int, default=50, help="Number of threads for regular web scrapers. Default: 50")
     parser.add_argument('--automation-threads', type=int, default=3, help="Max concurrent headless browser automation scrapers (processes). Default: 3")
+    parser.add_argument('--turnstile-delay', type=float, default=0, help="Delay in seconds to wait for Turnstile to load on slow computers. Default: 0 (no delay)")
     parser.add_argument('--remove-dead-links', action='store_true', help="Removes URLs from the sites file that return no proxies.")
     parser.add_argument('-v', '--verbose', action='store_true', help="Enable detailed logging for each scraper.")
     parser.add_argument('--compliant', action='store_true', help="Run in compliant mode: respect robots.txt, skip automation scrapers and anti-bot logic.")
@@ -281,7 +282,7 @@ def main():
         executor = ThreadPoolExecutor(max_workers=args.automation_threads, thread_name_prefix='HeadlessAutomation')
         executors.append(executor)
         for name, func in headless_automation_tasks.items():
-            future = executor.submit(run_automation_task, name, func, args.verbose, is_headful=False)
+            future = executor.submit(run_automation_task, name, func, args.verbose, is_headful=False, turnstile_delay=args.turnstile_delay)
             future_to_scraper[future] = name
             all_futures.append(future)
 
@@ -290,7 +291,7 @@ def main():
         executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix='HeadfulAutomation')
         executors.append(executor)
         for name, func in headful_automation_tasks.items():
-            future = executor.submit(run_automation_task, name, func, args.verbose, is_headful=True)
+            future = executor.submit(run_automation_task, name, func, args.verbose, is_headful=True, turnstile_delay=args.turnstile_delay)
             future_to_scraper[future] = name
             all_futures.append(future)
 

@@ -91,7 +91,7 @@ def _handle_turnstile(sb: BaseCase, verbose: bool, callable_after_page_reload: C
         sb.wait_for_element_present('body > table:nth-child(3)', timeout=20)
         if verbose: print("[SUCCESS] Spys.one: Challenge solved.")
 
-def scrape_from_spysone(sb: BaseCase, verbose: bool = False) -> List[str]:
+def scrape_from_spysone(sb: BaseCase, verbose: bool = False, turnstile_delay: float = 0) -> List[str]:
     """
     Scrapes spys.one using automation browser for all pages.
     Compatible with Windows and Linux on Python 3.12.9.
