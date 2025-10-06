@@ -211,7 +211,7 @@ def is_turnstile_present(sb: BaseCase, timeout: int = 5) -> bool:
     return False
 
 
-def is_turnstile_checkbox_ready(sb: BaseCase, timeout: int = 10) -> bool:
+def is_turnstile_checkbox_ready(sb: BaseCase, timeout: int = 15) -> bool:
     """
     Detects if Cloudflare Turnstile checkbox is ready to be clicked.
     Returns True if the checkbox/widget is visible and interactive, False otherwise.

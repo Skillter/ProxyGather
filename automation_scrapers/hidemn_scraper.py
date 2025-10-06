@@ -45,7 +45,7 @@ def _solve_challenge_and_get_creds(sb: BaseCase, url: str, verbose: bool) -> dic
         cf_clearance_cookie = next((c for c in cookies if c['name'] == 'cf_clearance'), None)
         
         if not cf_clearance_cookie:
-            raise ValueError("Could not find 'cf_clearance' cookie after solving challenge.")
+            raise ValueError("[ERROR] Could not find 'cf_clearance' cookie after solving challenge.")
             
         user_agent = sb.get_user_agent()
         
