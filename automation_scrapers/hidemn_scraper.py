@@ -19,6 +19,10 @@ def _solve_challenge_and_get_creds(sb: BaseCase, url: str, verbose: bool, turnst
 
     sb.open(url)
 
+
+    # The following turnstile bypass still doesn't work on super slow CPUs (1 core 3GHz) because SeleniumBase's built-in captcha solving has too short and hardcoded timeout.
+    # Even our --turnstile-delay option doesn't entirely fix it because Selenium's method restarts the page after capturing the checkbox location and clicks too soon (both in the same method).
+    # A better solution would be to copy the method's source-code and add a callback to allow longer timeouts for captcha solving
     try:
         if turnstile.is_turnstile_present(sb):
             if turnstile_delay > 0:
