@@ -157,7 +157,7 @@ def extract_proxies_from_content(content: str, verbose: bool = False) -> set:
         if verbose and proxies_found: print("[DEBUG]  ... Found proxies via general regex fallback.")
     return proxies_found
 
-def _fetch_and_extract_single(url: str, payload: Union[Dict, None], headers: Union[Dict, None], verbose: bool, rate_limiter: DomainRateLimiter = None, robots_checker: RobotsTxtChecker = None) -> set:
+def _fetch_and_extract_single(url: str, payload: Union[Dict, None], headers: Union[Dict, None], verbose: bool, rate_limiter: DomainRateLimiter = None, robots_checker: RobotsTxtChecker = None) -> Tuple[set, bool]:
     merged_headers = DEFAULT_HEADERS.copy()
     if headers:
         merged_headers.update(headers)
@@ -165,7 +165,7 @@ def _fetch_and_extract_single(url: str, payload: Union[Dict, None], headers: Uni
     if robots_checker and not robots_checker.is_allowed(url, merged_headers.get('User-Agent', '*')):
         if verbose:
             print(f"[INFO] Skipping {url} - blocked by robots.txt")
-        return set()
+        return set(), False
 
     if rate_limiter:
         domain = urlparse(url).netloc
@@ -176,9 +176,19 @@ def _fetch_and_extract_single(url: str, payload: Union[Dict, None], headers: Uni
             response = post_with_retry(url, data=payload, headers=merged_headers, timeout=15, verbose=verbose)
         else:
             response = get_with_retry(url, headers=merged_headers, timeout=15, verbose=verbose)
-        return extract_proxies_from_content(response.text, verbose=verbose)
-    except requests.exceptions.RequestException:
-        return set()
+        return extract_proxies_from_content(response.text, verbose=verbose), True
+    except requests.exceptions.HTTPError as e:
+        if e.response and e.response.status_code in [403, 429, 503]:
+            if verbose:
+                print(f"[RETRY] HTTP {e.response.status_code} for {url} (will retry)")
+            return set(), False
+        if verbose:
+            print(f"[ERROR] HTTP {e.response.status_code if e.response else 'error'} for {url}")
+        return set(), True
+    except requests.exceptions.RequestException as e:
+        if verbose:
+            print(f"[RETRY] Request failed for {url}: {e} (will retry)")
+        return set(), False
 
 def _scrape_paginated_url(base_url: str, base_payload: Union[Dict, None], base_headers: Union[Dict, None], verbose: bool, rate_limiter: DomainRateLimiter, robots_checker: RobotsTxtChecker = None) -> Tuple[set, bool]:
     """Scrapes a single paginated URL and returns (proxies, found_any)."""
@@ -198,7 +208,7 @@ def _scrape_paginated_url(base_url: str, base_payload: Union[Dict, None], base_h
 
         if verbose: print(f"[INFO]   ... Scraping page {page_num} ({current_url})")
 
-        newly_scraped = _fetch_and_extract_single(current_url, current_payload, base_headers, verbose, rate_limiter, robots_checker)
+        newly_scraped, success = _fetch_and_extract_single(current_url, current_payload, base_headers, verbose, rate_limiter, robots_checker)
 
         if newly_scraped:
             found_any = True
@@ -244,23 +254,44 @@ def scrape_proxies(
 
     if single_req_targets:
         print(f"[INFO] General Scraper: Found {len(single_req_targets)} single-request URLs")
+
+        retry_attempts = {(url, json.dumps(payload) if payload else None, json.dumps(headers) if headers else None): 0
+                          for url, payload, headers in single_req_targets}
+        max_retries = 3
+
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            future_to_url = {
-                executor.submit(_fetch_and_extract_single, url, payload, headers, verbose, rate_limiter, robots_checker): url
+            future_to_target = {
+                executor.submit(_fetch_and_extract_single, url, payload, headers, verbose, rate_limiter, robots_checker): (url, payload, headers)
                 for url, payload, headers in single_req_targets
             }
-            for future in as_completed(future_to_url):
-                url = future_to_url[future]
-                try:
-                    proxies_from_url = future.result()
-                    if proxies_from_url:
-                        if verbose: print(f"[INFO] General Scraper: Found {len(proxies_from_url)} proxies on {url}")
-                        all_proxies.update(proxies_from_url)
-                        successful_urls.add(url)
-                except Exception as exc:
-                    if verbose: print(f"[ERROR] An exception occurred while processing {url}: {exc}")
 
-    # Scrape paginated URLs concurrently (each pagination runs sequentially, but different URLs run in parallel)
+            while future_to_target:
+                for future in as_completed(list(future_to_target.keys())):
+                    url, payload, headers = future_to_target.pop(future)
+                    key = (url, json.dumps(payload) if payload else None, json.dumps(headers) if headers else None)
+
+                    try:
+                        proxies_from_url, success = future.result()
+
+                        if success:
+                            if proxies_from_url:
+                                if verbose: print(f"[INFO] General Scraper: Found {len(proxies_from_url)} proxies on {url}")
+                                all_proxies.update(proxies_from_url)
+                                successful_urls.add(url)
+                        else:
+                            retry_attempts[key] += 1
+                            if retry_attempts[key] < max_retries:
+                                if verbose:
+                                    print(f"[INFO] Retrying {url} (attempt {retry_attempts[key] + 1}/{max_retries})")
+                                time.sleep(2)
+                                new_future = executor.submit(_fetch_and_extract_single, url, payload, headers, verbose, rate_limiter, robots_checker)
+                                future_to_target[new_future] = (url, payload, headers)
+                            else:
+                                if verbose:
+                                    print(f"[ERROR] Max retries reached for {url}")
+                    except Exception as exc:
+                        if verbose: print(f"[ERROR] An exception occurred while processing {url}: {exc}")
+
     if paginated_targets:
         print(f"[INFO] General Scraper: Found {len(paginated_targets)} paginated URLs. Scraping concurrently with domain rate limiting...")
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
