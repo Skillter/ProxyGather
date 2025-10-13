@@ -73,9 +73,11 @@ class DomainRateLimiter:
         """Wait if necessary before making a request to this domain."""
         with self.locks[domain]:
             elapsed = time.time() - self.last_request_time[domain]
-            if elapsed < self.delay:
-                time.sleep(self.delay - elapsed)
+            sleep_time = max(0, self.delay - elapsed)
             self.last_request_time[domain] = time.time()
+
+        if sleep_time > 0:
+            time.sleep(sleep_time)
 
 class RobotsTxtChecker:
     """Thread-safe robots.txt checker with caching."""
@@ -283,7 +285,6 @@ def scrape_proxies(
                             if retry_attempts[key] < max_retries:
                                 if verbose:
                                     print(f"[INFO] Retrying {url} (attempt {retry_attempts[key] + 1}/{max_retries})")
-                                time.sleep(2)
                                 new_future = executor.submit(_fetch_and_extract_single, url, payload, headers, verbose, rate_limiter, robots_checker)
                                 future_to_target[new_future] = (url, payload, headers)
                             else:
