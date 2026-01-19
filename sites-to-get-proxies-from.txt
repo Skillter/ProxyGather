@@ -143,3 +143,5 @@ https://papaproxy.net/ru/packet.php
 https://papaproxy.net/ru/packet-ipv4.php
 
 https://www.911proxy.com/detection/proxyList?limit=500&page={page}&sort_by=lastChecked&sort_type=desc
+
+https://premiumproxy.net/full-proxy-list/
