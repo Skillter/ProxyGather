@@ -22,6 +22,7 @@ from scrapers.proxyhttp_scraper import scrape_from_proxyhttp
 from scrapers.proxydocker_scraper import scrape_from_proxydocker
 from scrapers.advancedname_scraper import scrape_from_advancedname
 from scrapers.proxyservers_scraper import scrape_from_proxyservers
+from scrapers.proxydaily_scraper import scrape_from_proxydaily
 from automation_scrapers.spysone_scraper import scrape_from_spysone
 from automation_scrapers.openproxylist_scraper import scrape_from_openproxylist
 from automation_scrapers.hidemn_scraper import scrape_from_hidemn
@@ -189,6 +190,7 @@ def main():
         'ProxyDocker': scrape_from_proxydocker,
         'Advanced.name': scrape_from_advancedname,
         'ProxyServers.pro': scrape_from_proxyservers,
+        'Proxy-Daily': lambda verbose: scrape_from_proxydaily(verbose=verbose, compliant_mode=args.compliant),
     }
     
     AUTOMATION_SCRAPER_NAMES = ['OpenProxyList', 'Hide.mn', 'Spys.one']
