@@ -19,6 +19,7 @@ from scrapers.proxylistorg_scraper import scrape_from_proxylistorg
 from scrapers.xseo_scraper import scrape_from_xseo
 from scrapers.gologin_scraper import scrape_from_gologin_api
 from scrapers.proxyhttp_scraper import scrape_from_proxyhttp
+from scrapers.proxydocker_scraper import scrape_from_proxydocker
 from automation_scrapers.spysone_scraper import scrape_from_spysone
 from automation_scrapers.openproxylist_scraper import scrape_from_openproxylist
 from automation_scrapers.hidemn_scraper import scrape_from_hidemn
@@ -183,10 +184,11 @@ def main():
         'GoLogin': scrape_from_gologin_api,
         'ProxyList.org': scrape_from_proxylistorg,
         'ProxyHttp': scrape_from_proxyhttp,
+        'ProxyDocker': scrape_from_proxydocker,
     }
     
     AUTOMATION_SCRAPER_NAMES = ['OpenProxyList', 'Hide.mn', 'Spys.one']
-    ANTI_BOT_BYPASS_SCRAPERS = ['OpenProxyList', 'Hide.mn', 'Spys.one', 'XSEO']
+    ANTI_BOT_BYPASS_SCRAPERS = ['OpenProxyList', 'Hide.mn', 'Spys.one', 'XSEO', 'ProxyDocker']
     HEADFUL_SCRAPERS = ['Hide.mn', 'Spys.one']
     general_scraper_name = 'Websites'
     all_scraper_names = sorted(list(all_scraper_tasks.keys()) + [general_scraper_name])
