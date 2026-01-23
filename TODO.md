@@ -1,3 +1,6 @@
 - Implement URL discovery from text file, fetch listed URLs and extract proxy source links. (Logic to take the url list from a separate text file, and then send a request to those listed urls, to extract urls to scrape proxies from)
 - Optimize the time to finish a full scrape of all sources (especially Geonode)
 - Only display the legal disclaimer before the actual scraping logic happens. for example, if we just want to check the sources with `python ScrapeAllProxies.py --only`, then there is no need to display the disclaimer.
+- More reliable ctrl+c termination 
+- By default don't use the browser automation sources, unless a `--use-browser-automation` argument is provided, or the browser automation source is specified with `--only` argument. If both `--use-browser-automation` and `--only` are specified, but the `--only` arg doesn't provide any automation browser source, then don't use browser automation (only the sources from the `--only` arg are supposed to launch). Similarly, if `--except` specifies a browser automation source, exclude it even if  `--use-browser-automation` is specified.
+- Make sure that all logs print in a new line (for example all [INFO], [DEBUG], [WARNING], [ERROR], [COMPLETED] etc should start from a new line)
