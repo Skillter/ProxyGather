@@ -43,23 +43,23 @@ class TerminationHandler:
             if self._terminating:
                 remaining = 3 - self._kill_counter
                 if remaining <= 0:
-                    print(f"\n[CRITICAL] Forced termination requested ({self._kill_counter}/3). Exiting immediately.")
+                    print(f"[CRITICAL] Forced termination requested ({self._kill_counter}/3). Exiting immediately.")
                     # Use os._exit to bypass SystemExit handlers and cleanup, ensuring immediate exit
                     os._exit(1)
                 else:
-                    print(f"\n[INFO] Termination in progress. Press Ctrl+C {remaining} more times to force quit.")
+                    print(f"[INFO] Termination in progress. Press Ctrl+C {remaining} more times to force quit.")
                 return
             self._terminating = True
 
         signal_name = signal.Signals(signum).name if signum else "manual"
-        print(f"\n\n[INTERRUPTED] Termination signal received ({signal_name}). Cleaning up... (Press Ctrl+C 2 more times to force kill)")
+        print(f"[INTERRUPTED] Termination signal received ({signal_name}). Cleaning up... (Press Ctrl+C 2 more times to force kill)")
 
         # Run all registered callbacks
         for callback in list(self._callbacks):
             try:
                 callback()
             except Exception as e:
-                print(f"\n[ERROR] Cleanup callback failed: {e}")
+                print(f"[ERROR] Cleanup callback failed: {e}")
 
     def register_callback(self, callback: Callable):
         """Register a cleanup callback to run on termination."""

@@ -67,22 +67,22 @@ class ProxyChecker:
             'http://proxy.web-hosting.com/azenv.php'
         ]
 
-        print("\n[INFO] Checking the health and content of proxy judges...")
+        print("[INFO] Checking the health and content of proxy judges...")
         self.live_judges = []
         for judge in initial_judges:
             result = self._send_query_internal(url=judge)
             if isinstance(result, dict) and 'REMOTE_ADDR' in result.get('response', ''):
                 self.live_judges.append(judge)
-                print(f"\n[INFO]   ... Judge is VALID: {judge}")
+                print(f"[INFO]   ... Judge is VALID: {judge}")
             elif self.verbose:
-                print(f"\n[WARN]   ... Judge is DEAD or returned INVALID content: {judge}")
-        
+                print(f"[WARN]   ... Judge is DEAD or returned INVALID content: {judge}")
+
         if not self.live_judges:
-            print("\n[CRITICAL] No valid proxy judges found. Cannot perform checks.")
+            print("[CRITICAL] No valid proxy judges found. Cannot perform checks.")
             self.ip = ""
             return
-            
-        print(f"\n[INFO] Using {len(self.live_judges)} valid proxy judges for all checks.")
+
+        print(f"[INFO] Using {len(self.live_judges)} valid proxy judges for all checks.")
         self.ip = self.get_ip()
 
     def get_ip(self):
@@ -155,7 +155,7 @@ class ProxyChecker:
                     is_live = True
                     break
                 elif self.verbose:
-                    print(f"\n[HIJACK?] Proxy {proxy} connected to the liveness check URL but returned unexpected content.")
+                    print(f"[HIJACK?] Proxy {proxy} connected to the liveness check URL but returned unexpected content.")
                 return False
             
             elif result is None:
@@ -164,9 +164,9 @@ class ProxyChecker:
             elif isinstance(result, int):
                 if self.verbose:
                     if result == 407:
-                        print(f"\n[AUTH FAILED] Proxy {proxy} requires a password (on liveness check).")
+                        print(f"[AUTH FAILED] Proxy {proxy} requires a password (on liveness check).")
                     else:
-                        print(f"\n[LIVENESS FAILED] Proxy {proxy} failed liveness check, returned HTTP {result}.")
+                        print(f"[LIVENESS FAILED] Proxy {proxy} failed liveness check, returned HTTP {result}.")
                 return False
 
         if not is_live:
@@ -189,11 +189,11 @@ class ProxyChecker:
                 if isinstance(result, int):
                     if attempt == self.JUDGE_RETRY_ATTEMPTS - 1 and self.verbose:
                         if result == 407:
-                            print(f"\n[AUTH FAILED] Proxy {proxy} requires a password.")
+                            print(f"[AUTH FAILED] Proxy {proxy} requires a password.")
                         elif result == 404:
-                            print(f"\n[HIJACK?] Proxy {proxy} returned HTTP 404 from judge, may be a hijacking proxy.")
+                            print(f"[HIJACK?] Proxy {proxy} returned HTTP 404 from judge, may be a hijacking proxy.")
                         else:
-                            print(f"\n[JUDGE FAILED] Proxy {proxy} failed all retries, last error from judge was HTTP {result}.")
+                            print(f"[JUDGE FAILED] Proxy {proxy} failed all retries, last error from judge was HTTP {result}.")
                     else:
                         time.sleep(0.1)
         

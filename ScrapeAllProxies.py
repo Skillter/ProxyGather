@@ -272,14 +272,14 @@ def main():
     headful_tasks_present = any(name in tasks_to_run for name in HEADFUL_SCRAPERS)
 
     if headful_tasks_present and sys.platform == "linux" and not os.environ.get('DISPLAY'):
-        print("\n[INFO] Linux/WSL detected. Checking for xvfb-run...")
+        print("[INFO] Linux/WSL detected. Checking for xvfb-run...")
         if shutil.which("xvfb-run"):
-            print("\n[INFO] xvfb-run found. Re-launching inside a virtual display...")
+            print("[INFO] xvfb-run found. Re-launching inside a virtual display...")
             command = [shutil.which("xvfb-run"), '--auto-servernum', sys.executable, *sys.argv]
             subprocess.run(command)
             sys.exit(0)
         else:
-            print("\n[ERROR] xvfb-run is required for headful browser automation on headless Linux/WSL but is not installed.")
+            print("[ERROR] xvfb-run is required for headful browser automation on headless Linux/WSL but is not installed.")
             print("Please install it: sudo apt-get update && sudo apt-get install -y xvfb")
             sys.exit(1)
     
@@ -367,14 +367,14 @@ def main():
                                 successful_general_urls.extend(urls)
                             else:
                                 results[name] = result_data
-                            print(f"\n[COMPLETED] '{name}' finished, found {len(results.get(name, []))} proxies.")
+                            print(f"[COMPLETED] '{name}' finished, found {len(results.get(name, []))} proxies.")
                         except TimeoutError:
                             results[name] = []
-                            print(f"\n[TIMEOUT] Scraper '{name}' exceeded execution time. Cancelling...")
+                            print(f"[TIMEOUT] Scraper '{name}' exceeded execution time. Cancelling...")
                             future.cancel()
                         except Exception as e:
                             results[name] = []
-                            print(f"\n[ERROR] Scraper '{name}' failed: {e}")
+                            print(f"[ERROR] Scraper '{name}' failed: {e}")
         finally:
             for executor in executors:
                 executor.shutdown(wait=True, cancel_futures=True)
@@ -389,10 +389,10 @@ def main():
                             successful_general_urls.extend(urls)
                         else:
                             results[name] = result_data
-                        print(f"\n[RECOVERED] '{name}' finished after shutdown, found {len(results.get(name, []))} proxies.")
+                        print(f"[RECOVERED] '{name}' finished after shutdown, found {len(results.get(name, []))} proxies.")
                     except Exception as e:
                         results[name] = []
-                        print(f"\n[ERROR] Could not recover results from '{name}': {e}")
+                        print(f"[ERROR] Could not recover results from '{name}': {e}")
 
         print("\n--- Combining and processing all results ---")
         combined_proxies = {p for proxy_list in results.values() if proxy_list for p in proxy_list if p and p.strip()}
@@ -400,19 +400,19 @@ def main():
 
         spam_count = len(combined_proxies) - len(final_proxies)
         if spam_count > 0:
-            print(f"\n[INFO] Removed {spam_count} spam/invalid proxies from reserved IP ranges.")
+            print(f"[INFO] Removed {spam_count} spam/invalid proxies from reserved IP ranges.")
 
-        print("\n--- Summary ---")
+        print("--- Summary ---")
         for name in sorted(results.keys()): print(f"Found {len(results.get(name, []))} proxies from {name}.")
-        print(f"\nTotal unique & valid proxies: {len(final_proxies)}")
+        print(f"Total unique & valid proxies: {len(final_proxies)}")
 
         if final_proxies:
             save_proxies_to_file(final_proxies, args.output)
         else:
-            print("\nCould not find any proxies from any source.")
+            print("Could not find any proxies from any source.")
 
         if args.remove_dead_links and successful_general_urls:
-            print(f"\n\n[INFO] Updating '{SITES_FILE}' to remove dead links...")
+            print(f"[INFO] Updating '{SITES_FILE}' to remove dead links...")
             try:
                 lines_to_keep = []
                 with open(SITES_FILE, 'r', encoding='utf-8') as f:
@@ -422,12 +422,12 @@ def main():
                             lines_to_keep.append(line)
                 with open(SITES_FILE, 'w', encoding='utf-8') as f:
                     f.writelines(lines_to_keep)
-                print(f"\n[SUCCESS] Successfully updated '{SITES_FILE}'.")
+                print(f"[SUCCESS] Successfully updated '{SITES_FILE}'.")
             except Exception as e:
-                print(f"\n[ERROR] Failed to update '{SITES_FILE}': {e}")
+                print(f"[ERROR] Failed to update '{SITES_FILE}': {e}")
 
         if should_terminate():
-            print("\n\n[INFO] Script terminated by user. Partial results have been saved.")
+            print("[INFO] Script terminated by user. Partial results have been saved.")
             return
 
 if __name__ == "__main__":
