@@ -1,4 +1,4 @@
-import re
+﻿import re
 from typing import List
 from helper.request_utils import get_with_retry
 
@@ -29,12 +29,12 @@ def scrape_from_gologin_api(verbose: bool = False) -> List[str]:
         A list of unique proxy strings in 'ip:port' format.
     """
     if verbose:
-        print("[RUNNING] 'GoLogin/Geoxy' scraper has started.")
+        print("\n[RUNNING] 'GoLogin/Geoxy' scraper has started.", flush=True)
 
     # --- Step 1: Fetch the HTML page to find the token ---
     try:
         if verbose:
-            print(f"[INFO] GoLogin: Fetching auth token from {GOLOGIN_URL}")
+            print(f"[INFO] GoLogin: Fetching auth token from {GOLOGIN_URL}", flush=True)
         
         response = get_with_retry(url=GOLOGIN_URL, headers=HEADERS, timeout=20, verbose=verbose)
         html_content = response.text
@@ -50,7 +50,7 @@ def scrape_from_gologin_api(verbose: bool = False) -> List[str]:
     auth_token = match.group(1)
     if verbose:
         # To avoid printing the full sensitive token, just confirm it was found.
-        print("[INFO] GoLogin: Successfully extracted Authorization token.")
+        print("[INFO] GoLogin: Successfully extracted Authorization token.", flush=True)
 
     # --- Step 3: Use the token to fetch proxies from the API ---
     api_headers = {
@@ -61,7 +61,7 @@ def scrape_from_gologin_api(verbose: bool = False) -> List[str]:
     
     try:
         if verbose:
-            print(f"[INFO] Geoxy API: Fetching proxies from {GEOXY_API_URL}")
+            print(f"[INFO] Geoxy API: Fetching proxies from {GEOXY_API_URL}", flush=True)
         
         response = get_with_retry(url=GEOXY_API_URL, headers=api_headers, timeout=30, verbose=verbose)
         proxy_data = response.json()
@@ -75,7 +75,7 @@ def scrape_from_gologin_api(verbose: bool = False) -> List[str]:
     all_proxies = set()
     if not isinstance(proxy_data, list):
         if verbose:
-            print("[WARN] Geoxy API: Response was not a list as expected.")
+            print("[WARN] Geoxy API: Response was not a list as expected.", flush=True)
         return []
 
     for item in proxy_data:
@@ -85,6 +85,7 @@ def scrape_from_gologin_api(verbose: bool = False) -> List[str]:
             all_proxies.add(address)
             
     if verbose:
-        print(f"[INFO] Geoxy API: Finished. Found {len(all_proxies)} unique proxies.")
+        print(f"[INFO] Geoxy API: Finished. Found {len(all_proxies)} unique proxies.", flush=True)
 
     return sorted(list(all_proxies))
+

@@ -1,4 +1,4 @@
-from typing import List
+﻿from typing import List
 import time
 from helper.request_utils import get_with_retry
 
@@ -21,7 +21,7 @@ def fetch_from_api(verbose: bool = False) -> List[str]:
         A list of proxy strings in 'ip:port' format, or an empty list on failure.
     """
     if verbose:
-        print("[INFO] Fetching proxies from ProxyScrape API (paginated)...")
+        print("\n[INFO] Fetching proxies from ProxyScrape API (paginated)...", flush=True)
     
     all_proxies = set()
     skip = 0
@@ -40,13 +40,13 @@ def fetch_from_api(verbose: bool = False) -> List[str]:
             # if the page is empty, we've reached the end
             if not proxies_on_page:
                 if verbose:
-                    print("[INFO]   ... No more proxies found. Stopping.")
+                    print("[INFO]   ... No more proxies found. Stopping.", flush=True)
                 break
 
             all_proxies.update(proxies_on_page)
             
             if verbose:
-                print(f"[INFO]   ... Found {len(proxies_on_page)} proxies on page {page_num}. Total unique: {len(all_proxies)}")
+                print(f"[INFO]   ... Found {len(proxies_on_page)} proxies on page {page_num}. Total unique: {len(all_proxies)}", flush=True)
 
             # prepare for the next iteration
             skip += 2000
@@ -57,6 +57,7 @@ def fetch_from_api(verbose: bool = False) -> List[str]:
             break # stop if there's an error
 
     if verbose:
-        print(f"[INFO] ProxyScrape API: Finished. Found a total of {len(all_proxies)} unique proxies.")
+        print(f"[INFO] ProxyScrape API: Finished. Found a total of {len(all_proxies)} unique proxies.", flush=True)
         
     return list(all_proxies)
+

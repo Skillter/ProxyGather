@@ -26,7 +26,7 @@ def scrape_from_proxydocker(verbose: bool = True) -> List[str]:
     their internal API.
     """
     if verbose:
-        print("[RUNNING] 'ProxyDocker' scraper has started.")
+        print("\n[RUNNING] 'ProxyDocker' scraper has started.", flush=True)
 
     all_proxies = set()
     session = requests.Session()
@@ -34,14 +34,14 @@ def scrape_from_proxydocker(verbose: bool = True) -> List[str]:
 
     try:
         if verbose:
-            print(f"[INFO] ProxyDocker: Initializing session at {CAPTCHA_CHECK_URL}...")
+            print(f"[INFO] ProxyDocker: Initializing session at {CAPTCHA_CHECK_URL}...", flush=True)
         
         init_response = session.post(CAPTCHA_CHECK_URL, timeout=15)
         if init_response.status_code != 200 and verbose:
-            print(f"[WARN] ProxyDocker: Captcha check returned status {init_response.status_code}, proceeding anyway.")
+            print(f"[WARN] ProxyDocker: Captcha check returned status {init_response.status_code}, proceeding anyway.", flush=True)
 
         if verbose:
-            print(f"[INFO] ProxyDocker: Fetching main page to extract token...")
+            print(f"[INFO] ProxyDocker: Fetching main page to extract token...", flush=True)
             
         main_response = session.get(MAIN_URL, timeout=15)
         main_response.raise_for_status()
@@ -49,12 +49,12 @@ def scrape_from_proxydocker(verbose: bool = True) -> List[str]:
         match = TOKEN_REGEX.search(main_response.text)
         if not match:
             if verbose:
-                print("[ERROR] ProxyDocker: Could not find '_token' meta tag. Aborting.")
+                print("[ERROR] ProxyDocker: Could not find '_token' meta tag. Aborting.", flush=True)
             return []
             
         token = match.group(1)
         if verbose:
-            print(f"[INFO] ProxyDocker: Successfully extracted token.")
+            print(f"[INFO] ProxyDocker: Successfully extracted token.", flush=True)
 
         page = 1
         while True:
@@ -71,7 +71,7 @@ def scrape_from_proxydocker(verbose: bool = True) -> List[str]:
             }
             
             if verbose:
-                print(f"[INFO] ProxyDocker: Scraping API page {page}...")
+                print(f"[INFO] ProxyDocker: Scraping API page {page}...", flush=True)
                 
             try:
                 api_response = session.post(API_URL, data=payload, timeout=20)
@@ -98,7 +98,7 @@ def scrape_from_proxydocker(verbose: bool = True) -> List[str]:
 
                 if not proxies_on_page:
                     if verbose:
-                        print(f"[INFO]   ... No proxies found on page {page}. Stopping.")
+                        print(f"[INFO]   ... No proxies found on page {page}. Stopping.", flush=True)
                     break
 
                 new_count = 0
@@ -119,7 +119,7 @@ def scrape_from_proxydocker(verbose: bool = True) -> List[str]:
                             new_count += 1
 
                 if verbose:
-                    print(f"[INFO]   ... Found {new_count} new proxies. Total unique: {len(all_proxies)}")
+                    print(f"[INFO]   ... Found {new_count} new proxies. Total unique: {len(all_proxies)}", flush=True)
                 
                 # Stop if we didn't find any *new* proxies to avoid infinite loops on some APIs
                 # that might return the same last page repeatedly
@@ -131,15 +131,15 @@ def scrape_from_proxydocker(verbose: bool = True) -> List[str]:
 
             except Exception as e:
                 if verbose:
-                    print(f"[ERROR] ProxyDocker: Error on page {page}: {e}")
+                    print(f"[ERROR] ProxyDocker: Error on page {page}: {e}", flush=True)
                 break
 
     except Exception as e:
         if verbose:
-            print(f"[ERROR] ProxyDocker: Scraper failed: {e}")
+            print(f"[ERROR] ProxyDocker: Scraper failed: {e}", flush=True)
 
     if verbose:
-        print(f"[INFO] ProxyDocker: Finished. Found {len(all_proxies)} unique proxies.")
+        print(f"[INFO] ProxyDocker: Finished. Found {len(all_proxies)} unique proxies.", flush=True)
 
     return sorted(list(all_proxies))
 

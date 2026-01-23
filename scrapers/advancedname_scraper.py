@@ -32,7 +32,7 @@ def scrape_from_advancedname(verbose: bool = True) -> List[str]:
     Paginates until no more proxies are found.
     """
     if verbose:
-        print("[RUNNING] 'Advanced.name' scraper has started.")
+        print("\n[RUNNING] 'Advanced.name' scraper has started.", flush=True)
 
     all_proxies = set()
     page = 1
@@ -41,7 +41,7 @@ def scrape_from_advancedname(verbose: bool = True) -> List[str]:
         url = f"{BASE_URL}?page={page}"
         
         if verbose:
-            print(f"[INFO] Advanced.name: Scraping page {page}...")
+            print(f"[INFO] Advanced.name: Scraping page {page}...", flush=True)
 
         try:
             response = get_with_retry(url=url, headers=HEADERS, timeout=20, verbose=verbose)
@@ -52,7 +52,7 @@ def scrape_from_advancedname(verbose: bool = True) -> List[str]:
             
             if not matches:
                 if verbose:
-                    print(f"[INFO]   ... No proxies found on page {page}. Stopping.")
+                    print(f"[INFO]   ... No proxies found on page {page}. Stopping.", flush=True)
                 break
 
             new_proxies_on_page = 0
@@ -69,12 +69,10 @@ def scrape_from_advancedname(verbose: bool = True) -> List[str]:
                             new_proxies_on_page += 1
 
             if verbose:
-                print(f"[INFO]   ... Found {new_proxies_on_page} new proxies on page {page}. Total unique: {len(all_proxies)}")
+                print(f"[INFO]   ... Found {new_proxies_on_page} new proxies on page {page}. Total unique: {len(all_proxies)}", flush=True)
 
             # Stop if the page loaded but we found 0 valid new proxies (avoids infinite loops on empty pages)
             if new_proxies_on_page == 0:
-                 # Double check: if the page has "No results" or similar, break. 
-                 # Usually if regex finds nothing we break earlier, but if regex finds broken data:
                  break
 
             page += 1
@@ -82,11 +80,11 @@ def scrape_from_advancedname(verbose: bool = True) -> List[str]:
 
         except Exception as e:
             if verbose:
-                print(f"[ERROR] Advanced.name: Failed to scrape page {page}: {e}")
+                print(f"[ERROR] Advanced.name: Failed to scrape page {page}: {e}", flush=True)
             break
 
     if verbose:
-        print(f"[INFO] Advanced.name: Finished. Found {len(all_proxies)} unique proxies.")
+        print(f"[INFO] Advanced.name: Finished. Found {len(all_proxies)} unique proxies.", flush=True)
 
     return sorted(list(all_proxies))
 

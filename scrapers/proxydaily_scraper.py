@@ -24,12 +24,12 @@ def scrape_from_proxydaily(verbose: bool = True, compliant_mode: bool = False) -
         compliant_mode: If True, checks robots.txt and ONLY fetches the first page (one request).
     """
     if verbose:
-        print("[RUNNING] 'Proxy-Daily' scraper has started.")
+        print("\n[RUNNING] 'Proxy-Daily' scraper has started.", flush=True)
 
     # --- Compliance Check ---
     if compliant_mode:
         if verbose:
-            print("[INFO] Proxy-Daily: Running in COMPLIANT mode. Checking robots.txt...")
+            print("[INFO] Proxy-Daily: Running in COMPLIANT mode. Checking robots.txt...", flush=True)
         
         rp = RobotFileParser()
         try:
@@ -37,14 +37,14 @@ def scrape_from_proxydaily(verbose: bool = True, compliant_mode: bool = False) -
             rp.read()
             if not rp.can_fetch("*", API_URL):
                 if verbose:
-                    print(f"[WARN] Proxy-Daily: blocked by robots.txt ({API_URL}). Stopping.")
+                    print(f"[WARN] Proxy-Daily: blocked by robots.txt ({API_URL}). Stopping.", flush=True)
                 return []
             if verbose:
-                print("[INFO] Proxy-Daily: Allowed by robots.txt. Being polite (waiting 2s)...")
+                print("[INFO] Proxy-Daily: Allowed by robots.txt. Being polite (waiting 2s)...", flush=True)
             time.sleep(2)
         except Exception as e:
             if verbose:
-                print(f"[WARN] Proxy-Daily: Could not fetch robots.txt: {e}. Proceeding with caution.")
+                print(f"[WARN] Proxy-Daily: Could not fetch robots.txt: {e}. Proceeding with caution.", flush=True)
 
     all_proxies = set()
     
@@ -75,7 +75,7 @@ def scrape_from_proxydaily(verbose: bool = True, compliant_mode: bool = False) -
         params['_'] = str(int(time.time() * 1000))
 
         if verbose:
-            print(f"[INFO] Proxy-Daily: Fetching proxies starting at index {start}...")
+            print(f"[INFO] Proxy-Daily: Fetching proxies starting at index {start}...", flush=True)
 
         try:
             response = requests.get(API_URL, headers=HEADERS, params=params, timeout=20)
@@ -86,12 +86,12 @@ def scrape_from_proxydaily(verbose: bool = True, compliant_mode: bool = False) -
             if total_records is None:
                 total_records = data.get('recordsTotal', 0)
                 if verbose and not compliant_mode:
-                    print(f"[INFO] Proxy-Daily: Total records available: {total_records}")
+                    print(f"[INFO] Proxy-Daily: Total records available: {total_records}", flush=True)
 
             items = data.get('data', [])
             if not items:
                 if verbose:
-                    print("[INFO] Proxy-Daily: No more items returned. Stopping.")
+                    print("[INFO] Proxy-Daily: No more items returned. Stopping.", flush=True)
                 break
 
             for item in items:
@@ -101,12 +101,12 @@ def scrape_from_proxydaily(verbose: bool = True, compliant_mode: bool = False) -
                     all_proxies.add(f"{ip}:{port}")
             
             if verbose:
-                print(f"[INFO]   ... Parsed {len(items)} items. Total unique: {len(all_proxies)}")
+                print(f"[INFO]   ... Parsed {len(items)} items. Total unique: {len(all_proxies)}", flush=True)
 
             # --- Compliance Exit ---
             if compliant_mode:
                 if verbose:
-                    print("[INFO] Proxy-Daily: Stopping after first page (Compliance Mode).")
+                    print("[INFO] Proxy-Daily: Stopping after first page (Compliance Mode).", flush=True)
                 break
             # ---------------------
 
@@ -116,7 +116,7 @@ def scrape_from_proxydaily(verbose: bool = True, compliant_mode: bool = False) -
             # Stop if we've reached the known total
             if start >= total_records:
                 if verbose:
-                    print("[INFO] Proxy-Daily: Reached end of records.")
+                    print("[INFO] Proxy-Daily: Reached end of records.", flush=True)
                 break
 
             # Polite delay between pagination requests
@@ -124,11 +124,11 @@ def scrape_from_proxydaily(verbose: bool = True, compliant_mode: bool = False) -
 
         except Exception as e:
             if verbose:
-                print(f"[ERROR] Proxy-Daily: Failed to fetch data at index {start}: {e}")
+                print(f"[ERROR] Proxy-Daily: Failed to fetch data at index {start}: {e}", flush=True)
             break
 
     if verbose:
-        print(f"[INFO] Proxy-Daily: Finished. Found {len(all_proxies)} unique proxies.")
+        print(f"[INFO] Proxy-Daily: Finished. Found {len(all_proxies)} unique proxies.", flush=True)
 
     return sorted(list(all_proxies))
 

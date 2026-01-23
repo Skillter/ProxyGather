@@ -1,4 +1,4 @@
-import json
+﻿import json
 import sys
 import argparse
 import os
@@ -20,7 +20,7 @@ def _save_working_proxies(proxy_data, prepend_protocol, output_base, is_final=Fa
 
     directory = os.path.dirname(base)
     if directory and not os.path.exists(directory):
-        print(f"[INFO] Creating output directory: {directory}")
+        print(f"[INFO] Creating output directory: {directory}", flush=True)
         os.makedirs(directory)
 
     for protocol, proxies_set in proxy_data.items():
@@ -34,10 +34,10 @@ def _save_working_proxies(proxy_data, prepend_protocol, output_base, is_final=Fa
                     else:
                         f.write(f"{proxy}\n")
         except IOError as e:
-            print(f"[ERROR] Could not write to output file '{filename}': {e}")
+            print(f"[ERROR] Could not write to output file '{filename}': {e}", flush=True)
     if not is_final:
         total_proxies = len(proxy_data.get('all', set()))
-        print(f"[PROGRESS] Interim save complete. {total_proxies} total working proxies saved.")
+        print(f"[PROGRESS] Interim save complete. {total_proxies} total working proxies saved.", flush=True)
 
 def check_and_format_proxy(checker, proxy_line):
     """A helper function to be run in each thread."""
@@ -68,12 +68,12 @@ def load_proxies_from_patterns(patterns: list) -> list:
         all_files.update(glob.glob(pattern))
 
     if not all_files:
-        print("[ERROR] No files found matching the specified patterns.")
+        print("[ERROR] No files found matching the specified patterns.", flush=True)
         sys.exit(1)
         
-    print(f"[INFO] Found {len(all_files)} files to process:")
+    print(f"[INFO] Found {len(all_files)} files to process:", flush=True)
     for f in sorted(list(all_files)):
-        print(f"  - {f}")
+        print(f"  - {f}", flush=True)
 
     unique_proxies = set()
     for filepath in all_files:
@@ -84,9 +84,9 @@ def load_proxies_from_patterns(patterns: list) -> list:
                     if proxy and not proxy.startswith('#'):
                         unique_proxies.add(proxy)
         except IOError as e:
-            print(f"[WARN] Could not read file {filepath}: {e}")
+            print(f"[WARN] Could not read file {filepath}: {e}", flush=True)
             
-    print(f"[INFO] Loaded {len(unique_proxies)} unique proxies from all source files.")
+    print(f"[INFO] Loaded {len(unique_proxies)} unique proxies from all source files.", flush=True)
     return sorted(list(unique_proxies))
 
 
@@ -121,19 +121,19 @@ def main():
         timeout = parse_timeout(args.timeout)
         if timeout <= 0: timeout = 1.0
     except ValueError:
-        print(f"[ERROR] Invalid timeout format: {args.timeout}. Please use formats like '500ms', '10s', or '8'.")
+        print(f"[ERROR] Invalid timeout format: {args.timeout}. Please use formats like '500ms', '10s', or '8'.", flush=True)
         return
 
     all_unique_proxies = load_proxies_from_patterns(args.input)
     if not all_unique_proxies:
-        print("[ERROR] No proxies to check after loading files. Exiting.")
+        print("[ERROR] No proxies to check after loading files. Exiting.", flush=True)
         return
 
     # --- Pass the verbose flag to the checker ---
-    print("[INFO] Initializing Proxy Checker...")
+    print("[INFO] Initializing Proxy Checker...", flush=True)
     checker = ProxyChecker(timeout=timeout, verbose=args.verbose)
     if not checker.ip:
-        print("[ERROR] Could not determine your public IP. Aborting check.")
+        print("[ERROR] Could not determine your public IP. Aborting check.", flush=True)
         return
     
     if args.output:
@@ -170,7 +170,7 @@ def main():
         else:
             resume_filename = f"proxies-to-resume-{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.txt"
 
-        print(f"[INFO] Saving {len(proxies_to_recheck)} remaining proxies to '{resume_filename}'...")
+        print(f"[INFO] Saving {len(proxies_to_recheck)} remaining proxies to '{resume_filename}'...", flush=True)
 
         try:
             directory = os.path.dirname(resume_filename)
@@ -181,18 +181,18 @@ def main():
                 for proxy in sorted(list(proxies_to_recheck)):
                     f_out.write(proxy + '\n')
 
-            print(f"[SUCCESS] Resume file created. To continue, run with --input '{resume_filename}'")
+            print(f"[SUCCESS] Resume file created. To continue, run with --input '{resume_filename}'", flush=True)
         except Exception as e:
-            print(f"[ERROR] Could not save resume file: {e}")
+            print(f"[ERROR] Could not save resume file: {e}", flush=True)
 
     with termination_context(callbacks=[shutdown_executor]):
         try:
-            print(f"[INFO] Your public IP is: {checker.ip}")
-            print(f"--- Starting check on {len(all_unique_proxies)} unique proxies with {args.threads} workers and a {timeout}s timeout ---")
+            print(f"[INFO] Your public IP is: {checker.ip}", flush=True)
+            print(f"--- Starting check on {len(all_unique_proxies)} unique proxies with {args.threads} workers and a {timeout}s timeout ---", flush=True)
 
             for proxy in all_unique_proxies:
                 if should_terminate():
-                    print("[INFO] Termination requested, stopping proxy submission...")
+                    print("[INFO] Termination requested, stopping proxy submission...", flush=True)
                     break
 
                 future = executor.submit(check_and_format_proxy, checker, proxy)
@@ -201,7 +201,7 @@ def main():
 
                 while len(in_flight) >= args.threads * 2:
                     if should_terminate():
-                        print("[INFO] Termination requested, stopping result collection...")
+                        print("[INFO] Termination requested, stopping result collection...", flush=True)
                         break
 
                     # Use timeout to allow checking for termination
@@ -218,25 +218,26 @@ def main():
                                 working_proxies['all'].add(proxy_line)
                                 for proto in details.get('protocols', []):
                                     if proto in working_proxies: working_proxies[proto].add(proxy_line)
-                                print(f"[SUCCESS] Proxy: {proxy_line:<22} | Anonymity: {details['anonymity']:<11} | Protocols: {','.join(details['protocols']):<15} | Timeout: {details['timeout']}ms")
+                                # Force a newline before success message to avoid merging with progress dots
+                                print(f"\n[SUCCESS] Proxy: {proxy_line:<22} | Anonymity: {details['anonymity']:<11} | Protocols: {','.join(details['protocols']):<15} | Timeout: {details['timeout']}ms", flush=True)
                                 if len(working_proxies['all']) % SAVE_BATCH_SIZE == 0:
                                     _save_working_proxies(working_proxies, args.prepend_protocol, output_base_name)
                             elif args.verbose:
                                 print(".", end="", flush=True)
                         except Exception as exc:
                             if args.verbose:
-                                print(f"[ERROR] An exception occurred while checking proxy {proxy_from_future}: {exc}")
+                                print(f"\n[ERROR] An exception occurred while checking proxy {proxy_from_future}: {exc}", flush=True)
 
                 if should_terminate():
                     break
 
             if not should_terminate():
-                print("[INFO] All proxies have been submitted. Waiting for the last checks to complete...")
+                print("[INFO] All proxies have been submitted. Waiting for the last checks to complete...", flush=True)
 
             # Wait for remaining futures with timeout check
             while in_flight:
                 if should_terminate():
-                    print("[INFO] Termination requested during final wait...")
+                    print("[INFO] Termination requested during final wait...", flush=True)
                     break
                 
                 done_futures, _ = wait(in_flight.keys(), timeout=0.5, return_when='FIRST_COMPLETED')
@@ -252,32 +253,32 @@ def main():
                             working_proxies['all'].add(proxy_line)
                             for proto in details.get('protocols', []):
                                 if proto in working_proxies: working_proxies[proto].add(proxy_line)
-                            print(f"[SUCCESS] Proxy: {proxy_line:<22} | Anonymity: {details['anonymity']:<11} | Protocols: {','.join(details['protocols']):<15} | Timeout: {details['timeout']}ms")
+                            print(f"\n[SUCCESS] Proxy: {proxy_line:<22} | Anonymity: {details['anonymity']:<11} | Protocols: {','.join(details['protocols']):<15} | Timeout: {details['timeout']}ms", flush=True)
                             if len(working_proxies['all']) % SAVE_BATCH_SIZE == 0:
                                 _save_working_proxies(working_proxies, args.prepend_protocol, output_base_name)
                         elif args.verbose:
                             print(".", end="", flush=True)
                     except Exception as exc:
                         if args.verbose:
-                            print(f"[ERROR] An exception occurred while checking proxy {proxy_from_future}: {exc}")
+                            print(f"\n[ERROR] An exception occurred while checking proxy {proxy_from_future}: {exc}", flush=True)
 
         except Exception as e:
-            print(f"[ERROR] An unexpected error occurred: {e}")
+            print(f"[ERROR] An unexpected error occurred: {e}", flush=True)
             return
 
         if should_terminate():
-            print("[INTERRUPTED] User stopped the script. Saving partial results...")
+            print("[INTERRUPTED] User stopped the script. Saving partial results...", flush=True)
             save_resume_file()
 
-        print("--- Check Finished or Interrupted ---")
+        print("--- Check Finished or Interrupted ---", flush=True)
         total_found = len(working_proxies['all'])
-        print(f"Found {total_found} working proxies in total.")
+        print(f"Found {total_found} working proxies in total.", flush=True)
         if total_found > 0:
-            print(f"[INFO] Performing final save...")
+            print(f"[INFO] Performing final save...", flush=True)
             _save_working_proxies(working_proxies, args.prepend_protocol, output_base_name, is_final=True)
-            print(f"[SUCCESS] Final lists saved.")
+            print(f"[SUCCESS] Final lists saved.", flush=True)
         else:
-            print("[INFO] No working proxies were found to save.")
+            print("[INFO] No working proxies were found to save.", flush=True)
             
 if __name__ == "__main__":
     main()

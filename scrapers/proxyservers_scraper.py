@@ -53,7 +53,7 @@ def scrape_from_proxyservers(verbose: bool = True) -> List[str]:
     Paginates until no more proxies are found.
     """
     if verbose:
-        print("[RUNNING] 'ProxyServers.pro' scraper has started.")
+        print("\n[RUNNING] 'ProxyServers.pro' scraper has started.", flush=True)
 
     all_proxies = set()
     page = 1
@@ -68,7 +68,7 @@ def scrape_from_proxyservers(verbose: bool = True) -> List[str]:
             url = URL_TEMPLATE.format(page=page)
             
         if verbose:
-            print(f"[INFO] ProxyServers.pro: Scraping page {page}...")
+            print(f"[INFO] ProxyServers.pro: Scraping page {page}...", flush=True)
 
         try:
             response = get_with_retry(url=url, headers=HEADERS, timeout=20, verbose=verbose)
@@ -80,19 +80,19 @@ def scrape_from_proxyservers(verbose: bool = True) -> List[str]:
                 # If we can't find the key, we can't decode ports. 
                 # This might happen if they change protection or we get a captcha/block page.
                 if verbose:
-                    print(f"[ERROR] ProxyServers.pro: Could not find 'chash' key on page {page}. Content sample: {html_content[:200]}...")
+                    print(f"[ERROR] ProxyServers.pro: Could not find 'chash' key on page {page}. Content sample: {html_content[:200]}...", flush=True)
                 break
             
             chash_key = chash_match.group(1)
             if verbose and page == 1:
-                 print(f"[INFO]   ... Found chash key: {chash_key}")
+                 print(f"[INFO]   ... Found chash key: {chash_key}", flush=True)
 
             # 2. Extract IP and Encoded Port pairs
             matches = PROXY_DATA_REGEX.findall(html_content)
             
             if not matches:
                 if verbose:
-                    print(f"[INFO]   ... No proxies found on page {page}. Stopping.")
+                    print(f"[INFO]   ... No proxies found on page {page}. Stopping.", flush=True)
                 break
 
             new_proxies_on_page = 0
@@ -106,7 +106,7 @@ def scrape_from_proxyservers(verbose: bool = True) -> List[str]:
                         new_proxies_on_page += 1
 
             if verbose:
-                print(f"[INFO]   ... Found {new_proxies_on_page} new proxies on page {page}. Total unique: {len(all_proxies)}")
+                print(f"[INFO]   ... Found {new_proxies_on_page} new proxies on page {page}. Total unique: {len(all_proxies)}", flush=True)
 
             if new_proxies_on_page == 0:
                  # If we found matches but they were all duplicates, we might be looping or at the end of useful lists.
@@ -119,11 +119,11 @@ def scrape_from_proxyservers(verbose: bool = True) -> List[str]:
 
         except Exception as e:
             if verbose:
-                print(f"[ERROR] ProxyServers.pro: Failed to scrape page {page}: {e}")
+                print(f"[ERROR] ProxyServers.pro: Failed to scrape page {page}: {e}", flush=True)
             break
 
     if verbose:
-        print(f"[INFO] ProxyServers.pro: Finished. Found {len(all_proxies)} unique proxies.")
+        print(f"[INFO] ProxyServers.pro: Finished. Found {len(all_proxies)} unique proxies.", flush=True)
 
     return sorted(list(all_proxies))
 

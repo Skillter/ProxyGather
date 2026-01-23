@@ -1,4 +1,4 @@
-import re
+﻿import re
 from typing import List, Dict
 from helper.request_utils import post_with_retry
 
@@ -60,14 +60,14 @@ def scrape_from_xseo(verbose: bool = True) -> List[str]:
         A list of unique proxy strings in 'ip:port' format.
     """
     if verbose:
-        print("[RUNNING] 'XSEO.in' scraper has started.")
+        print("\n[RUNNING] 'XSEO.in' scraper has started.", flush=True)
     
     all_proxies = set()
 
     for url in URLS_TO_SCRAPE:
         try:
             if verbose:
-                print(f"[INFO] XSEO.in: Sending POST request to {url}")
+                print(f"[INFO] XSEO.in: Sending POST request to {url}", flush=True)
             
             response = post_with_retry(url=url, data=PAYLOAD, headers=HEADERS, timeout=20, verbose=verbose)
             html_content = response.text
@@ -79,7 +79,7 @@ def scrape_from_xseo(verbose: bool = True) -> List[str]:
             var_map = _parse_port_variables(html_content)
             if var_map:
                 if verbose:
-                    print(f"[INFO] XSEO.in: Successfully parsed port variables on {url}.")
+                    print(f"[INFO] XSEO.in: Successfully parsed port variables on {url}.", flush=True)
                 
                 obfuscated_matches = PROXY_LINE_REGEX.findall(html_content)
                 decoded_count = 0
@@ -89,7 +89,7 @@ def scrape_from_xseo(verbose: bool = True) -> List[str]:
 
                     if any(digit is None for digit in port_digits):
                         if verbose:
-                            print(f"[WARN] XSEO.in: Could not decode port for IP {ip} on {url}. Vars: '{port_vars_str}'")
+                            print(f"[WARN] XSEO.in: Could not decode port for IP {ip} on {url}. Vars: '{port_vars_str}'", flush=True)
                         continue
                     
                     port = "".join(port_digits)
@@ -97,10 +97,10 @@ def scrape_from_xseo(verbose: bool = True) -> List[str]:
                     decoded_count += 1
                 
                 if verbose and decoded_count > 0:
-                    print(f"[INFO] XSEO.in: Decoded {decoded_count} obfuscated proxies from {url}.")
+                    print(f"[INFO] XSEO.in: Decoded {decoded_count} obfuscated proxies from {url}.", flush=True)
             else:
                 if verbose:
-                    print(f"[INFO] XSEO.in: No JavaScript port obfuscation found on {url}. Checking for plain text.")
+                    print(f"[INFO] XSEO.in: No JavaScript port obfuscation found on {url}. Checking for plain text.", flush=True)
 
             # --- Pass 2: Handle Plain Text Proxies (the fallback method) ---
             plain_text_matches = PLAIN_TEXT_PROXY_REGEX.findall(html_content)
@@ -112,17 +112,17 @@ def scrape_from_xseo(verbose: bool = True) -> List[str]:
                 # To avoid confusion, only report newly found plain-text proxies
                 new_plain_text = len(plain_text_found - proxies_from_url)
                 if new_plain_text > 0:
-                    print(f"[INFO] XSEO.in: Found {new_plain_text} additional plain text proxies on {url}.")
+                    print(f"[INFO] XSEO.in: Found {new_plain_text} additional plain text proxies on {url}.", flush=True)
             
             # Combine results from both passes for this URL
             proxies_from_url.update(plain_text_found)
 
             if verbose:
                 if not proxies_from_url:
-                    print(f"[WARN] XSEO.in: Could not find any proxies on {url} using either method.")
+                    print(f"[WARN] XSEO.in: Could not find any proxies on {url} using either method.", flush=True)
                 else:
                     new_count = len(proxies_from_url - all_proxies)
-                    print(f"[INFO] XSEO.in: Found {len(proxies_from_url)} total proxies on {url}, {new_count} are new.")
+                    print(f"[INFO] XSEO.in: Found {len(proxies_from_url)} total proxies on {url}, {new_count} are new.", flush=True)
             
             all_proxies.update(proxies_from_url)
 
@@ -130,6 +130,7 @@ def scrape_from_xseo(verbose: bool = True) -> List[str]:
             continue
 
     if verbose:
-        print(f"[INFO] XSEO.in: Finished. Found {len(all_proxies)} unique proxies from {len(URLS_TO_SCRAPE)} URLs.")
+        print(f"[INFO] XSEO.in: Finished. Found {len(all_proxies)} unique proxies from {len(URLS_TO_SCRAPE)} URLs.", flush=True)
 
     return sorted(list(all_proxies))
+

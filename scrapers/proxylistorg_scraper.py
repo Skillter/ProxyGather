@@ -1,4 +1,4 @@
-import re
+﻿import re
 import base64
 import time
 import random
@@ -19,8 +19,8 @@ HEADERS = {
 }
 
 # Polite scraping configuration
-BASE_DELAY_SECONDS = 2
-RANDOM_DELAY_RANGE = (0.5, 1.5)
+BASE_DELAY_SECONDS = 1.0
+RANDOM_DELAY_RANGE = (0.1, 0.5)
 
 def scrape_from_proxylistorg(verbose: bool = True) -> List[str]:
     """
@@ -38,13 +38,13 @@ def scrape_from_proxylistorg(verbose: bool = True) -> List[str]:
     all_proxies = set()
     page_num = 1
     
-    print("[RUNNING] 'ProxyList.org' scraper has started.")
+    print("\n[RUNNING] 'ProxyList.org' scraper has started.", flush=True)
 
     while True:
         url = URL_TEMPLATE.format(page=page_num)
         
         if verbose:
-            print(f"[INFO] ProxyList.org: Scraping page {page_num}...")
+            print(f"[INFO] ProxyList.org: Scraping page {page_num}...", flush=True)
 
         try:
             response = get_with_retry(url=url, headers=HEADERS, timeout=20, verbose=verbose)
@@ -55,7 +55,7 @@ def scrape_from_proxylistorg(verbose: bool = True) -> List[str]:
             # If no proxies are found, we've reached the last page
             if not encoded_proxies:
                 if verbose:
-                    print(f"[INFO]   ... No proxies found on page {page_num}. Assuming end of list.")
+                    print(f"[INFO]   ... No proxies found on page {page_num}. Assuming end of list.", flush=True)
                 break # Exit the while loop
             
             newly_found_on_page = set()
@@ -68,18 +68,18 @@ def scrape_from_proxylistorg(verbose: bool = True) -> List[str]:
                     newly_found_on_page.add(decoded_string)
                 except (ValueError, UnicodeDecodeError) as e:
                     if verbose:
-                        print(f"[WARN]   ... Could not decode '{encoded_proxy}': {e}")
+                        print(f"[WARN]   ... Could not decode '{encoded_proxy}': {e}", flush=True)
                     continue # Skip to the next proxy
             
             if verbose:
-                print(f"[INFO]   ... Found and successfully decoded {len(newly_found_on_page)} proxies.")
+                print(f"[INFO]   ... Found and successfully decoded {len(newly_found_on_page)} proxies.", flush=True)
             
             # If we didn't add any new proxies to our main set, we might be in a loop
             initial_count = len(all_proxies)
             all_proxies.update(newly_found_on_page)
             if len(all_proxies) == initial_count:
                 if verbose:
-                    print("[INFO]   ... No new unique proxies found. Stopping to prevent infinite loop.")
+                    print("[INFO]   ... No new unique proxies found. Stopping to prevent infinite loop.", flush=True)
                 break
 
         except Exception:
@@ -88,12 +88,13 @@ def scrape_from_proxylistorg(verbose: bool = True) -> List[str]:
         # Polite Rate-limiting: Wait before hitting the next page
         sleep_duration = BASE_DELAY_SECONDS + random.uniform(*RANDOM_DELAY_RANGE)
         if verbose:
-            print(f"[INFO] Waiting for {sleep_duration:.2f} seconds before next page...")
+            print(f"[INFO] Waiting for {sleep_duration:.2f} seconds before next page...", flush=True)
         time.sleep(sleep_duration)
         
         page_num += 1
     
     if verbose:
-        print(f"[INFO] ProxyList.org: Finished. Found a total of {len(all_proxies)} unique proxies.")
+        print(f"[INFO] ProxyList.org: Finished. Found a total of {len(all_proxies)} unique proxies.", flush=True)
 
     return sorted(list(all_proxies))
+

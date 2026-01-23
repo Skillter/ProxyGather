@@ -1,4 +1,4 @@
-import time
+﻿import time
 import random
 import re
 from typing import List
@@ -41,7 +41,7 @@ def scrape_checkerproxy_archive(verbose: bool = True) -> List[str]:
     all_proxies = set()
     
     # This function is called from a concurrent setup, so print a starting message.
-    print("[RUNNING] 'CheckerProxy' scraper has started.")
+    print("\n[RUNNING] 'CheckerProxy' scraper has started.", flush=True)
 
     # --- Step 1: Get the list of available dates ---
     try:
@@ -50,23 +50,23 @@ def scrape_checkerproxy_archive(verbose: bool = True) -> List[str]:
 
         if not archive_data.get("success") or not archive_data.get("data", {}).get("items"):
             if verbose:
-                print("[ERROR] CheckerProxy archive list API did not return a successful or valid response.")
+                print("[ERROR] CheckerProxy archive list API did not return a successful or valid response.", flush=True)
             return []
 
         dates_to_scrape = [item['date'] for item in archive_data['data']['items']]
         total_dates = len(dates_to_scrape)
         if verbose:
-            print(f"[INFO] CheckerProxy: Found {total_dates} archive dates to process.")
+            print(f"[INFO] CheckerProxy: Found {total_dates} archive dates to process.", flush=True)
 
     except Exception as e:
         if verbose:
-            print(f"[ERROR] CheckerProxy: Failed to fetch archive list after retries: {e}")
+            print(f"[ERROR] CheckerProxy: Failed to fetch archive list after retries: {e}", flush=True)
         return []
 
     # --- Step 2: Scrape each daily list ---
     for idx, date in enumerate(dates_to_scrape, start=1):
         if verbose:
-            print(f"[INFO] CheckerProxy: Fetching date {date} ({idx}/{total_dates})...")
+            print(f"[INFO] CheckerProxy: Fetching date {date} ({idx}/{total_dates})...", flush=True)
 
         try:
             url = DAILY_PROXY_URL_TEMPLATE.format(date=date)
@@ -75,7 +75,7 @@ def scrape_checkerproxy_archive(verbose: bool = True) -> List[str]:
 
             if not daily_data.get("success") or not daily_data.get("data", {}).get("proxyList"):
                 if verbose:
-                    print(f"[WARN] CheckerProxy: No valid data for {date}. Skipping.")
+                    print(f"[WARN] CheckerProxy: No valid data for {date}. Skipping.", flush=True)
                 continue
 
             proxy_list = daily_data['data']['proxyList']
@@ -90,18 +90,18 @@ def scrape_checkerproxy_archive(verbose: bool = True) -> List[str]:
                     invalid_count += 1
 
             if verbose:
-                print(f"[INFO]   ... Found {len(proxy_list)} entries. {valid_count} valid, {invalid_count} invalid.")
+                print(f"[INFO]   ... Found {len(proxy_list)} entries. {valid_count} valid, {invalid_count} invalid.", flush=True)
 
         except Exception as e:
             if verbose:
-                print(f"[WARN] CheckerProxy: Skipping date {date} due to error: {e}")
+                print(f"[WARN] CheckerProxy: Skipping date {date} due to error: {e}", flush=True)
             continue
 
         sleep_duration = BASE_DELAY_SECONDS + random.uniform(*RANDOM_DELAY_RANGE)
         time.sleep(sleep_duration)
 
     if verbose:
-        duplicates_removed = sum(len(daily_data.get("data", {}).get("items", [])) for daily_data in []) - len(all_proxies)
-        print(f"[INFO] CheckerProxy: Finished. Processed {len(all_proxies)} unique proxies.")
+        print(f"[INFO] CheckerProxy: Finished. Processed {len(all_proxies)} unique proxies.", flush=True)
 
     return sorted(list(all_proxies))
+

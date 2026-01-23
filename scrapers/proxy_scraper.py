@@ -1,4 +1,4 @@
-import requests
+﻿import requests
 import re
 import json
 import time
@@ -139,14 +139,14 @@ def extract_proxies_from_content(content: str, verbose: bool = False) -> set:
     try:
         json_data = json.loads(content)
         _recursive_json_search_and_extract(json_data, proxies_found)
-        if proxies_found and verbose: print("[DEBUG]  ... Found proxies via smart JSON parsing.")
+        if proxies_found and verbose: print("[DEBUG]  ... Found proxies via smart JSON parsing.", flush=True)
     except (json.JSONDecodeError, TypeError): pass
     if not proxies_found:
         data_config_pattern = r'data-config="(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{1,5})"'
         matches = re.findall(data_config_pattern, content)
         if matches:
             proxies_found.update(matches)
-            if verbose: print("[DEBUG]  ... Found proxies via 'data-config' attribute parsing.")
+            if verbose: print("[DEBUG]  ... Found proxies via 'data-config' attribute parsing.", flush=True)
     if not proxies_found:
         for pattern in PATTERNS:
             try:
@@ -157,7 +157,7 @@ def extract_proxies_from_content(content: str, verbose: bool = False) -> set:
                     elif isinstance(match, str) and ":" in match:
                         proxies_found.add(match)
             except re.error: continue
-        if verbose and proxies_found: print("[DEBUG]  ... Found proxies via general regex fallback.")
+        if verbose and proxies_found: print("[DEBUG]  ... Found proxies via general regex fallback.", flush=True)
     return proxies_found
 
 def _fetch_and_extract_single(url: str, payload: Union[Dict, None], headers: Union[Dict, None], verbose: bool, rate_limiter: DomainRateLimiter = None, robots_checker: RobotsTxtChecker = None) -> Tuple[set, bool]:
@@ -167,7 +167,7 @@ def _fetch_and_extract_single(url: str, payload: Union[Dict, None], headers: Uni
 
     if robots_checker and not robots_checker.is_allowed(url, merged_headers.get('User-Agent', '*')):
         if verbose:
-            print(f"[INFO] Skipping {url} - blocked by robots.txt")
+            print(f"[INFO] Skipping {url} - blocked by robots.txt", flush=True)
         return set(), False
 
     if rate_limiter:
@@ -183,14 +183,14 @@ def _fetch_and_extract_single(url: str, payload: Union[Dict, None], headers: Uni
     except requests.exceptions.HTTPError as e:
         if e.response and e.response.status_code in [403, 429, 503]:
             if verbose:
-                print(f"[RETRY] HTTP {e.response.status_code} for {url} (will retry)")
+                print(f"[RETRY] HTTP {e.response.status_code} for {url} (will retry)", flush=True)
             return set(), False
         if verbose:
-            print(f"[ERROR] HTTP {e.response.status_code if e.response else 'error'} for {url}")
+            print(f"[ERROR] HTTP {e.response.status_code if e.response else 'error'} for {url}", flush=True)
         return set(), True
     except requests.exceptions.RequestException as e:
         if verbose:
-            print(f"[RETRY] Request failed for {url}: {e} (will retry)")
+            print(f"[RETRY] Request failed for {url}: {e} (will retry)", flush=True)
         return set(), False
 
 def _scrape_paginated_url(base_url: str, base_payload: Union[Dict, None], base_headers: Union[Dict, None], verbose: bool, rate_limiter: DomainRateLimiter, robots_checker: RobotsTxtChecker = None) -> Tuple[set, bool]:
@@ -199,11 +199,11 @@ def _scrape_paginated_url(base_url: str, base_payload: Union[Dict, None], base_h
     page_num = 1
     found_any = False
 
-    if verbose: print(f"[INFO] General Scraper: Starting pagination for {base_url}")
+    if verbose: print(f"\n[INFO] General Scraper: Starting pagination for {base_url}", flush=True)
 
     while True:
         if should_terminate():
-            if verbose: print(f"[INFO] General Scraper: Termination requested, stopping pagination for {base_url}")
+            if verbose: print(f"[INFO] General Scraper: Termination requested, stopping pagination for {base_url}", flush=True)
             break
 
         current_url = base_url.replace("{page}", str(page_num))
@@ -213,7 +213,7 @@ def _scrape_paginated_url(base_url: str, base_payload: Union[Dict, None], base_h
             payload_str = payload_str.replace("{page}", str(page_num))
             current_payload = json.loads(payload_str)
 
-        if verbose: print(f"[INFO]   ... Scraping page {page_num} ({current_url})")
+        if verbose: print(f"[INFO]   ... Scraping page {page_num} ({current_url})", flush=True)
 
         newly_scraped, success = _fetch_and_extract_single(current_url, current_payload, base_headers, verbose, rate_limiter, robots_checker)
 
@@ -223,10 +223,10 @@ def _scrape_paginated_url(base_url: str, base_payload: Union[Dict, None], base_h
             proxies.update(newly_scraped)
 
             if len(proxies) == initial_count:
-                if verbose: print("[INFO]   ... No new unique proxies found. Ending pagination.")
+                if verbose: print("[INFO]   ... No new unique proxies found. Ending pagination.", flush=True)
                 break
         else:
-            if verbose: print(f"[INFO]   ... No proxies found on page {page_num}. Ending pagination.")
+            if verbose: print(f"[INFO]   ... No proxies found on page {page_num}. Ending pagination.", flush=True)
             break
 
         page_num += 1
@@ -272,7 +272,7 @@ def scrape_proxies(
 
             while future_to_target:
                 if should_terminate():
-                    if verbose: print("[INFO] General Scraper: Termination requested, stopping single-request scraping")
+                    if verbose: print("[INFO] General Scraper: Termination requested, stopping single-request scraping", flush=True)
                     break
 
                 for future in as_completed(list(future_to_target.keys())):
@@ -287,27 +287,27 @@ def scrape_proxies(
 
                         if success:
                             if proxies_from_url:
-                                if verbose: print(f"[INFO] General Scraper: Found {len(proxies_from_url)} proxies on {url}")
+                                if verbose: print(f"[INFO] General Scraper: Found {len(proxies_from_url)} proxies on {url}", flush=True)
                                 all_proxies.update(proxies_from_url)
                                 successful_urls.add(url)
                         else:
                             retry_attempts[key] += 1
                             if retry_attempts[key] < max_retries:
                                 if verbose:
-                                    print(f"[INFO] Retrying {url} (attempt {retry_attempts[key] + 1}/{max_retries})")
+                                    print(f"[INFO] Retrying {url} (attempt {retry_attempts[key] + 1}/{max_retries})", flush=True)
                                 new_future = executor.submit(_fetch_and_extract_single, url, payload, headers, verbose, rate_limiter, robots_checker)
                                 future_to_target[new_future] = (url, payload, headers)
                             else:
                                 if verbose:
-                                    print(f"[ERROR] Max retries reached for {url}")
+                                    print(f"[ERROR] Max retries reached for {url}", flush=True)
                     except Exception as exc:
-                        if verbose: print(f"[ERROR] An exception occurred while processing {url}: {exc}")
+                        if verbose: print(f"[ERROR] An exception occurred while processing {url}: {exc}", flush=True)
 
     if paginated_targets:
         if should_terminate():
-            if verbose: print("[INFO] General Scraper: Termination requested, skipping paginated URL scraping")
+            if verbose: print("[INFO] General Scraper: Termination requested, skipping paginated URL scraping", flush=True)
         else:
-            print(f"[INFO] General Scraper: Found {len(paginated_targets)} paginated URLs. Scraping concurrently with domain rate limiting...")
+            print(f"[INFO] General Scraper: Found {len(paginated_targets)} paginated URLs. Scraping concurrently with domain rate limiting...", flush=True)
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 future_to_url = {
                     executor.submit(_scrape_paginated_url, base_url, base_payload, base_headers, verbose, rate_limiter, robots_checker): base_url
@@ -315,17 +315,18 @@ def scrape_proxies(
                 }
                 for future in as_completed(future_to_url):
                     if should_terminate():
-                        if verbose: print("[INFO] General Scraper: Termination requested, stopping paginated URL scraping")
+                        if verbose: print("[INFO] General Scraper: Termination requested, stopping paginated URL scraping", flush=True)
                         break
 
                     base_url = future_to_url[future]
                     try:
                         proxies_from_url, found_any = future.result()
                         if found_any:
-                            if verbose: print(f"[INFO] General Scraper: Found {len(proxies_from_url)} total proxies from {base_url}")
+                            if verbose: print(f"[INFO] General Scraper: Found {len(proxies_from_url)} total proxies from {base_url}", flush=True)
                             all_proxies.update(proxies_from_url)
                             successful_urls.add(base_url)
                     except Exception as exc:
-                        if verbose: print(f"[ERROR] An exception occurred while processing {base_url}: {exc}")
+                        if verbose: print(f"[ERROR] An exception occurred while processing {base_url}: {exc}", flush=True)
 
     return sorted(list(all_proxies)), sorted(list(successful_urls))
+

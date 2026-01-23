@@ -63,21 +63,21 @@ def _decode_packer(payload: str, radix: int, count: int, keywords: List[str]) ->
 def _get_port_map(html_content: str, session: requests.Session, verbose: bool) -> Dict[str, str]:
     match = JS_FILE_REGEX.search(html_content)
     if not match:
-        if verbose: print("[ERROR] PremProxy: Could not find port mapping JS filename.")
+        if verbose: print("[ERROR] PremProxy: Could not find port mapping JS filename.", flush=True)
         return {}
     
     js_filename = match.group(1)
     js_url = f"https://premproxy.com/js/{js_filename}"
     
     try:
-        if verbose: print(f"[INFO] PremProxy: Fetching port map from {js_url}...")
+        if verbose: print(f"[INFO] PremProxy: Fetching port map from {js_url}...", flush=True)
         resp = session.get(js_url, timeout=15, verify=False)
         resp.raise_for_status()
         js_content = resp.text
         
         pm = PACKER_REGEX.search(js_content)
         if not pm:
-            if verbose: print("[ERROR] PremProxy: Could not parse packed JS.")
+            if verbose: print("[ERROR] PremProxy: Could not parse packed JS.", flush=True)
             return {}
         
         payload = pm.group(1)
@@ -88,11 +88,11 @@ def _get_port_map(html_content: str, session: requests.Session, verbose: bool) -
         unpacked_js = _decode_packer(payload, radix, count, keywords)
         
         mappings = dict(PORT_MAP_REGEX.findall(unpacked_js))
-        if verbose: print(f"[INFO] PremProxy: Extracted {len(mappings)} port mappings.")
+        if verbose: print(f"[INFO] PremProxy: Extracted {len(mappings)} port mappings.", flush=True)
         return mappings
         
     except Exception as e:
-        if verbose: print(f"[ERROR] PremProxy: Failed to get port map: {e}")
+        if verbose: print(f"[ERROR] PremProxy: Failed to get port map: {e}", flush=True)
         return {}
 
 def scrape_from_premproxy(verbose: bool = True) -> List[str]:
@@ -100,17 +100,17 @@ def scrape_from_premproxy(verbose: bool = True) -> List[str]:
     Scrapes proxies from premproxy.com.
     """
     if verbose:
-        print("[RUNNING] 'PremProxy' scraper has started.")
+        print("\n[RUNNING] 'PremProxy' scraper has started.", flush=True)
 
     all_proxies = set()
     session = requests.Session()
     session.headers.update(HEADERS)
     
     try:
-        if verbose: print(f"[INFO] PremProxy: Scraping page 1...")
+        if verbose: print(f"[INFO] PremProxy: Scraping page 1...", flush=True)
         response = session.get(BASE_URL, timeout=20, verify=False)
         if response.status_code != 200:
-            if verbose: print(f"[ERROR] PremProxy: Failed to load main page (HTTP {response.status_code})")
+            if verbose: print(f"[ERROR] PremProxy: Failed to load main page (HTTP {response.status_code})", flush=True)
             return []
         
         page_html = response.text
@@ -125,27 +125,27 @@ def scrape_from_premproxy(verbose: bool = True) -> List[str]:
                 all_proxies.add(f"{ip}:{port}")
         
         if verbose:
-            print(f"[INFO]   ... Found {len(all_proxies)} proxies on page 1.")
+            print(f"[INFO]   ... Found {len(all_proxies)} proxies on page 1.", flush=True)
 
         page = 2
         while True:
             url = PAGE_URL_TEMPLATE.format(page=page)
-            if verbose: print(f"[INFO] PremProxy: Scraping page {page}...")
+            if verbose: print(f"[INFO] PremProxy: Scraping page {page}...", flush=True)
             
             try:
                 resp = session.get(url, timeout=15, verify=False)
                 if resp.status_code == 404:
-                    if verbose: print("[INFO] PremProxy: Reached end of list (404).")
+                    if verbose: print("[INFO] PremProxy: Reached end of list (404).", flush=True)
                     break
                 if resp.status_code != 200:
-                    if verbose: print(f"[WARN] PremProxy: Error on page {page} (HTTP {resp.status_code}).")
+                    if verbose: print(f"[WARN] PremProxy: Error on page {page} (HTTP {resp.status_code}).", flush=True)
                     break
                 
                 content = resp.text
                 new_matches = PROXY_ROW_REGEX.findall(content)
                 
                 if not new_matches:
-                    if verbose: print("[INFO] PremProxy: No proxies found on page. Stopping.")
+                    if verbose: print("[INFO] PremProxy: No proxies found on page. Stopping.", flush=True)
                     break
                 
                 new_count = 0
@@ -158,25 +158,25 @@ def scrape_from_premproxy(verbose: bool = True) -> List[str]:
                             new_count += 1
                 
                 if verbose:
-                    print(f"[INFO]   ... Found {new_count} new proxies. Total: {len(all_proxies)}")
+                    print(f"[INFO]   ... Found {new_count} new proxies. Total: {len(all_proxies)}", flush=True)
                 
                 # Automatically stop if no NEW proxies were found on this page
                 if new_count == 0:
-                    if verbose: print("[INFO] PremProxy: No new unique proxies found on this page. Stopping.")
+                    if verbose: print("[INFO] PremProxy: No new unique proxies found on this page. Stopping.", flush=True)
                     break
 
                 page += 1
                 time.sleep(1) 
                 
             except Exception as e:
-                if verbose: print(f"[ERROR] PremProxy: Error on page {page}: {e}")
+                if verbose: print(f"[ERROR] PremProxy: Error on page {page}: {e}", flush=True)
                 break
 
     except Exception as e:
-        if verbose: print(f"[ERROR] PremProxy: Critical error: {e}")
+        if verbose: print(f"[ERROR] PremProxy: Critical error: {e}", flush=True)
 
     if verbose:
-        print(f"[INFO] PremProxy: Finished. Found {len(all_proxies)} unique proxies.")
+        print(f"[INFO] PremProxy: Finished. Found {len(all_proxies)} unique proxies.", flush=True)
 
     return sorted(list(all_proxies))
 

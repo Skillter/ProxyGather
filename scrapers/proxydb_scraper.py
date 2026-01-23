@@ -1,10 +1,10 @@
-import time
+﻿import time
 import random
 from typing import List
 from .proxy_scraper import scrape_proxies
 
-BASE_DELAY_SECONDS = 1
-RANDOM_DELAY_RANGE = (0.0, 0.0)
+BASE_DELAY_SECONDS = 0.5
+RANDOM_DELAY_RANGE = (0.0, 0.2)
 
 MAX_PAGES_COMPLIANT = 2
 MAX_PAGES_AGGRESSIVE = 10
@@ -28,13 +28,13 @@ def scrape_all_from_proxydb(verbose: bool = False, compliant_mode: bool = False)
 
     if verbose:
         mode_name = "compliant" if compliant_mode else "aggressive"
-        print(f"[INFO] ProxyDB: Running in {mode_name} mode (max {max_pages} pages)")
+        print(f"\n[INFO] ProxyDB: Running in {mode_name} mode (max {max_pages} pages)", flush=True)
 
     while page_num <= max_pages:
         url = f"http://proxydb.net/?offset={offset}&sort_column_id=response_time_avg"
         
         if verbose:
-            print(f"[INFO] Scraping ProxyDB page {page_num} (offset={offset})...")
+            print(f"[INFO] Scraping ProxyDB page {page_num} (offset={offset})...", flush=True)
         
         # --- FIXED: Correctly unpack the tuple returned by scrape_proxies ---
         # scrape_proxies now returns (proxies, successful_urls), so we need to account for that.
@@ -43,30 +43,30 @@ def scrape_all_from_proxydb(verbose: bool = False, compliant_mode: bool = False)
         
         if not newly_scraped:
             if verbose:
-                print(f"[INFO]   ... No proxies found on page {page_num}. Assuming end of list.")
+                print(f"[INFO]   ... No proxies found on page {page_num}. Assuming end of list.", flush=True)
             break
             
         initial_count = len(all_found_proxies)
         all_found_proxies.update(newly_scraped)
         
         if verbose:
-            print(f"[INFO]   ... Found {len(newly_scraped)} proxies. Total unique: {len(all_found_proxies)}.")
+            print(f"[INFO]   ... Found {len(newly_scraped)} proxies. Total unique: {len(all_found_proxies)}.", flush=True)
 
         if len(all_found_proxies) == initial_count:
              if verbose:
-                print("[INFO]   ... No new unique proxies found. Stopping.")
+                print("[INFO]   ... No new unique proxies found. Stopping.", flush=True)
              break
         
-        # --- ADDED: Rate-limiting logic ---
+        # --- Rate-limiting logic ---
         # Be a polite scraper: wait before hitting the next page to avoid being blocked.
         sleep_duration = BASE_DELAY_SECONDS + random.uniform(*RANDOM_DELAY_RANGE)
         if verbose:
             # Format the float to two decimal places for cleaner output
-            print(f"[INFO] Waiting for {sleep_duration:.2f} seconds before next page...")
+            print(f"[INFO] Waiting for {sleep_duration:.2f} seconds before next page...", flush=True)
         time.sleep(sleep_duration)
-        # --- END of added logic ---
             
         offset += 30
         page_num += 1
         
     return sorted(list(all_found_proxies))
+

@@ -140,18 +140,18 @@ def scrape_from_proxynova(verbose: bool = True) -> List[str]:
     the JavaScript string obfuscation logic in Python.
     """
     if verbose:
-        print("[RUNNING] 'ProxyNova' scraper has started.")
+        print("\n[RUNNING] 'ProxyNova' scraper has started.", flush=True)
 
     all_proxies = set()
     
     for url in URLS:
         if verbose:
-            print(f"[INFO] ProxyNova: Scraping {url}...")
+            print(f"[INFO] ProxyNova: Scraping {url}...", flush=True)
             
         try:
             response = requests.get(url, headers=HEADERS, timeout=20)
             if response.status_code != 200:
-                if verbose: print(f"[WARN] ProxyNova: HTTP {response.status_code} for {url}")
+                if verbose: print(f"[WARN] ProxyNova: HTTP {response.status_code} for {url}", flush=True)
                 continue
                 
             html_content = response.text
@@ -159,7 +159,7 @@ def scrape_from_proxynova(verbose: bool = True) -> List[str]:
             # Find all proxy rows
             rows = ROW_REGEX.findall(html_content)
             if not rows:
-                if verbose: print(f"[INFO]   ... No proxy rows found on {url}")
+                if verbose: print(f"[INFO]   ... No proxy rows found on {url}", flush=True)
                 continue
                 
             new_proxies_count = 0
@@ -191,16 +191,16 @@ def scrape_from_proxynova(verbose: bool = True) -> List[str]:
                             new_proxies_count += 1
             
             if verbose:
-                print(f"[INFO]   ... Found {new_proxies_count} proxies. Total unique: {len(all_proxies)}")
+                print(f"[INFO]   ... Found {new_proxies_count} proxies. Total unique: {len(all_proxies)}", flush=True)
             
             time.sleep(1.5)
 
         except Exception as e:
             if verbose:
-                print(f"[ERROR] ProxyNova: Failed to scrape {url}: {e}")
+                print(f"[ERROR] ProxyNova: Failed to scrape {url}: {e}", flush=True)
 
     if verbose:
-        print(f"[INFO] ProxyNova: Finished. Found {len(all_proxies)} unique proxies.")
+        print(f"[INFO] ProxyNova: Finished. Found {len(all_proxies)} unique proxies.", flush=True)
 
     return sorted(list(all_proxies))
 
