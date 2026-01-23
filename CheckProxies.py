@@ -204,7 +204,11 @@ def main():
                         print("\n[INFO] Termination requested, stopping result collection...")
                         break
 
-                    done_futures, _ = wait(in_flight.keys(), return_when='FIRST_COMPLETED')
+                    # Use timeout to allow checking for termination
+                    done_futures, _ = wait(in_flight.keys(), timeout=0.5, return_when='FIRST_COMPLETED')
+                    if not done_futures:
+                        continue
+                        
                     for future_done in done_futures:
                         proxy_from_future = in_flight.pop(future_done)
                         try:
@@ -229,27 +233,33 @@ def main():
             if not should_terminate():
                 print("\n[INFO] All proxies have been submitted. Waiting for the last checks to complete...")
 
-            for future_done in as_completed(in_flight):
-                if should_terminate() and len(working_proxies['all']) % SAVE_BATCH_SIZE == 0:
-                    print("\n[INFO] Termination requested, stopping final result collection...")
+            # Wait for remaining futures with timeout check
+            while in_flight:
+                if should_terminate():
+                    print("\n[INFO] Termination requested during final wait...")
                     break
+                
+                done_futures, _ = wait(in_flight.keys(), timeout=0.5, return_when='FIRST_COMPLETED')
+                if not done_futures:
+                    continue
 
-                proxy_from_future = in_flight.pop(future_done)
-                try:
-                    result = future_done.result()
-                    if result:
-                        proxy_line, details = result
-                        working_proxies['all'].add(proxy_line)
-                        for proto in details.get('protocols', []):
-                            if proto in working_proxies: working_proxies[proto].add(proxy_line)
-                        print(f"\n[SUCCESS] Proxy: {proxy_line:<22} | Anonymity: {details['anonymity']:<11} | Protocols: {','.join(details['protocols']):<15} | Timeout: {details['timeout']}ms")
-                        if len(working_proxies['all']) % SAVE_BATCH_SIZE == 0:
-                            _save_working_proxies(working_proxies, args.prepend_protocol, output_base_name)
-                    elif args.verbose:
-                        print(".", end="", flush=True)
-                except Exception as exc:
-                    if args.verbose:
-                        print(f"\n[ERROR] An exception occurred while checking proxy {proxy_from_future}: {exc}")
+                for future_done in done_futures:
+                    proxy_from_future = in_flight.pop(future_done)
+                    try:
+                        result = future_done.result()
+                        if result:
+                            proxy_line, details = result
+                            working_proxies['all'].add(proxy_line)
+                            for proto in details.get('protocols', []):
+                                if proto in working_proxies: working_proxies[proto].add(proxy_line)
+                            print(f"\n[SUCCESS] Proxy: {proxy_line:<22} | Anonymity: {details['anonymity']:<11} | Protocols: {','.join(details['protocols']):<15} | Timeout: {details['timeout']}ms")
+                            if len(working_proxies['all']) % SAVE_BATCH_SIZE == 0:
+                                _save_working_proxies(working_proxies, args.prepend_protocol, output_base_name)
+                        elif args.verbose:
+                            print(".", end="", flush=True)
+                    except Exception as exc:
+                        if args.verbose:
+                            print(f"\n[ERROR] An exception occurred while checking proxy {proxy_from_future}: {exc}")
 
         except Exception as e:
             print(f"\n[ERROR] An unexpected error occurred: {e}")
@@ -270,3 +280,4 @@ def main():
             
 if __name__ == "__main__":
     main()
+

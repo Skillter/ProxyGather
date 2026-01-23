@@ -6,7 +6,7 @@ import re
 import shutil
 import subprocess
 import tempfile
-from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError
+from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError, wait, FIRST_COMPLETED
 from typing import List, Dict, Union, Tuple
 from seleniumbase import SB
 
@@ -339,28 +339,42 @@ def main():
         try:
             if all_futures:
                 print("\n--- Waiting for all scrapers to complete... ---")
-                for future in as_completed(all_futures):
+                
+                # Convert to set for efficient removal
+                pending_futures = set(all_futures)
+                
+                while pending_futures:
                     if should_terminate():
                         print("\n[INFO] Termination requested, stopping result collection...")
                         break
-
-                    name = future_to_scraper.get(future, "Unknown")
-                    try:
-                        result_data = future.result(timeout=INDIVIDUAL_SCRAPER_TIMEOUT)
-                        if name == general_scraper_name:
-                            proxies_found, urls = result_data
-                            results[name] = proxies_found
-                            successful_general_urls.extend(urls)
-                        else:
-                            results[name] = result_data
-                        print(f"[COMPLETED] '{name}' finished, found {len(results.get(name, []))} proxies.")
-                    except TimeoutError:
-                        results[name] = []
-                        print(f"[TIMEOUT] Scraper '{name}' exceeded {INDIVIDUAL_SCRAPER_TIMEOUT}s timeout. Cancelling...")
-                        future.cancel()
-                    except Exception as e:
-                        results[name] = []
-                        print(f"[ERROR] Scraper '{name}' failed: {e}")
+                    
+                    # Wait for at least one future to complete, but timeout to allow checking termination flag
+                    done_futures, _ = wait(pending_futures, timeout=0.5, return_when=FIRST_COMPLETED)
+                    
+                    if not done_futures:
+                        continue
+                        
+                    for future in done_futures:
+                        pending_futures.remove(future)
+                        
+                        name = future_to_scraper.get(future, "Unknown")
+                        try:
+                            # The future is already done, so this call is non-blocking
+                            result_data = future.result() 
+                            if name == general_scraper_name:
+                                proxies_found, urls = result_data
+                                results[name] = proxies_found
+                                successful_general_urls.extend(urls)
+                            else:
+                                results[name] = result_data
+                            print(f"[COMPLETED] '{name}' finished, found {len(results.get(name, []))} proxies.")
+                        except TimeoutError:
+                            results[name] = []
+                            print(f"[TIMEOUT] Scraper '{name}' exceeded execution time. Cancelling...")
+                            future.cancel()
+                        except Exception as e:
+                            results[name] = []
+                            print(f"[ERROR] Scraper '{name}' failed: {e}")
         finally:
             for executor in executors:
                 executor.shutdown(wait=True, cancel_futures=True)

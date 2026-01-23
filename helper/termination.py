@@ -6,9 +6,9 @@ Provides reliable Ctrl+C handling with proper cleanup of resources.
 import signal
 import sys
 import threading
+import os
 from typing import Callable, Optional, Set
 from contextlib import contextmanager
-
 
 class TerminationHandler:
     """
@@ -19,6 +19,7 @@ class TerminationHandler:
     - Thread-safe state management
     - Callback registration for cleanup
     - Prevents duplicate signal handlers
+    - Supports forced exit on multiple signals
     """
 
     def __init__(self):
@@ -27,6 +28,7 @@ class TerminationHandler:
         self._callbacks: Set[Callable] = set()
         self._original_handlers: dict = {}
         self._signals_registered = False
+        self._kill_counter = 0
 
     @property
     def is_terminating(self) -> bool:
@@ -37,12 +39,20 @@ class TerminationHandler:
     def request_termination(self, signum=None, frame=None):
         """Request graceful termination. Called by signal handlers."""
         with self._lock:
+            self._kill_counter += 1
             if self._terminating:
+                remaining = 3 - self._kill_counter
+                if remaining <= 0:
+                    print(f"\n[CRITICAL] Forced termination requested ({self._kill_counter}/3). Exiting immediately.")
+                    # Use os._exit to bypass SystemExit handlers and cleanup, ensuring immediate exit
+                    os._exit(1)
+                else:
+                    print(f"\n[INFO] Termination in progress. Press Ctrl+C {remaining} more times to force quit.")
                 return
             self._terminating = True
 
         signal_name = signal.Signals(signum).name if signum else "manual"
-        print(f"\n\n[INTERRUPTED] Termination signal received ({signal_name}). Cleaning up...")
+        print(f"\n\n[INTERRUPTED] Termination signal received ({signal_name}). Cleaning up... (Press Ctrl+C 2 more times to force kill)")
 
         # Run all registered callbacks
         for callback in list(self._callbacks):
