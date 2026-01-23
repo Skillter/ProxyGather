@@ -1,0 +1,3 @@
+- Implement URL discovery from text file, fetch listed URLs and extract proxy source links. (Logic to take the url list from a separate text file, and then send a request to those listed urls, to extract urls to scrape proxies from)
+- Optimize the time to finish a full scrape of all sources (especially Geonode)
+- Only display the legal disclaimer before the actual scraping logic happens. for example, if we just want to check the sources with `python ScrapeAllProxies.py --only`, then there is no need to display the disclaimer.
