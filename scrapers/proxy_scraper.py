@@ -9,6 +9,7 @@ from urllib.robotparser import RobotFileParser
 from collections import defaultdict
 import threading
 from helper.request_utils import get_with_retry, post_with_retry
+from helper.termination import should_terminate
 
 # Changed from a set to a list to enforce a prioritized order.
 # Patterns are ordered from most specific/reliable to most generic/broad.
@@ -201,6 +202,10 @@ def _scrape_paginated_url(base_url: str, base_payload: Union[Dict, None], base_h
     if verbose: print(f"[INFO] General Scraper: Starting pagination for {base_url}")
 
     while True:
+        if should_terminate():
+            if verbose: print(f"[INFO] General Scraper: Termination requested, stopping pagination for {base_url}")
+            break
+
         current_url = base_url.replace("{page}", str(page_num))
         current_payload = None
         if base_payload:
@@ -268,7 +273,14 @@ def scrape_proxies(
             }
 
             while future_to_target:
+                if should_terminate():
+                    if verbose: print("[INFO] General Scraper: Termination requested, stopping single-request scraping")
+                    break
+
                 for future in as_completed(list(future_to_target.keys())):
+                    if should_terminate():
+                        break
+
                     url, payload, headers = future_to_target.pop(future)
                     key = (url, json.dumps(payload) if payload else None, json.dumps(headers) if headers else None)
 
@@ -294,21 +306,28 @@ def scrape_proxies(
                         if verbose: print(f"[ERROR] An exception occurred while processing {url}: {exc}")
 
     if paginated_targets:
-        print(f"[INFO] General Scraper: Found {len(paginated_targets)} paginated URLs. Scraping concurrently with domain rate limiting...")
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            future_to_url = {
-                executor.submit(_scrape_paginated_url, base_url, base_payload, base_headers, verbose, rate_limiter, robots_checker): base_url
-                for base_url, base_payload, base_headers in paginated_targets
-            }
-            for future in as_completed(future_to_url):
-                base_url = future_to_url[future]
-                try:
-                    proxies_from_url, found_any = future.result()
-                    if found_any:
-                        if verbose: print(f"[INFO] General Scraper: Found {len(proxies_from_url)} total proxies from {base_url}")
-                        all_proxies.update(proxies_from_url)
-                        successful_urls.add(base_url)
-                except Exception as exc:
-                    if verbose: print(f"[ERROR] An exception occurred while processing {base_url}: {exc}")
+        if should_terminate():
+            if verbose: print("[INFO] General Scraper: Termination requested, skipping paginated URL scraping")
+        else:
+            print(f"[INFO] General Scraper: Found {len(paginated_targets)} paginated URLs. Scraping concurrently with domain rate limiting...")
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                future_to_url = {
+                    executor.submit(_scrape_paginated_url, base_url, base_payload, base_headers, verbose, rate_limiter, robots_checker): base_url
+                    for base_url, base_payload, base_headers in paginated_targets
+                }
+                for future in as_completed(future_to_url):
+                    if should_terminate():
+                        if verbose: print("[INFO] General Scraper: Termination requested, stopping paginated URL scraping")
+                        break
+
+                    base_url = future_to_url[future]
+                    try:
+                        proxies_from_url, found_any = future.result()
+                        if found_any:
+                            if verbose: print(f"[INFO] General Scraper: Found {len(proxies_from_url)} total proxies from {base_url}")
+                            all_proxies.update(proxies_from_url)
+                            successful_urls.add(base_url)
+                    except Exception as exc:
+                        if verbose: print(f"[ERROR] An exception occurred while processing {base_url}: {exc}")
 
     return sorted(list(all_proxies)), sorted(list(successful_urls))

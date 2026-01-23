@@ -8,6 +8,7 @@ from datetime import datetime
 import glob
 
 from checker.proxy_checker import ProxyChecker
+from helper.termination import termination_context, should_terminate
 
 SAVE_BATCH_SIZE = 25
 
@@ -144,75 +145,33 @@ def main():
     in_flight = {}
     submitted_proxies = set()
     working_proxies = {'all': set(), 'http': set(), 'socks4': set(), 'socks5': set()}
-    
+
     executor = ThreadPoolExecutor(max_workers=args.threads)
 
-    try:
-        print(f"[INFO] Your public IP is: {checker.ip}")
-        print(f"--- Starting check on {len(all_unique_proxies)} unique proxies with {args.threads} workers and a {timeout}s timeout ---")
+    def shutdown_executor():
+        """Callback to shutdown the executor immediately."""
+        try:
+            executor.shutdown(wait=False, cancel_futures=True)
+        except Exception:
+            pass
 
-        for proxy in all_unique_proxies:
-            future = executor.submit(check_and_format_proxy, checker, proxy)
-            in_flight[future] = proxy
-            submitted_proxies.add(proxy)
-
-            while len(in_flight) >= args.threads * 2:
-                done_futures, _ = wait(in_flight.keys(), return_when='FIRST_COMPLETED')
-                for future_done in done_futures:
-                    proxy_from_future = in_flight.pop(future_done)
-                    try:
-                        result = future_done.result()
-                        if result:
-                            proxy_line, details = result
-                            working_proxies['all'].add(proxy_line)
-                            for proto in details.get('protocols', []):
-                                if proto in working_proxies: working_proxies[proto].add(proxy_line)
-                            # SUCCESS messages are always printed
-                            print(f"\n[SUCCESS] Proxy: {proxy_line:<22} | Anonymity: {details['anonymity']:<11} | Protocols: {','.join(details['protocols']):<15} | Timeout: {details['timeout']}ms")
-                            if len(working_proxies['all']) % SAVE_BATCH_SIZE == 0:
-                                _save_working_proxies(working_proxies, args.prepend_protocol, output_base_name)
-                        elif args.verbose:
-                            # only print dots if in verbose mode
-                            print(".", end="", flush=True)
-                    except Exception as exc:
-                        if args.verbose:
-                            print(f"\n[ERROR] An exception occurred while checking proxy {proxy_from_future}: {exc}")
-        
-        print("\n[INFO] All proxies have been submitted. Waiting for the last checks to complete...")
-        for future_done in as_completed(in_flight):
-            proxy_from_future = in_flight.pop(future_done)
-            try:
-                result = future_done.result()
-                if result:
-                    proxy_line, details = result
-                    working_proxies['all'].add(proxy_line)
-                    for proto in details.get('protocols', []):
-                        if proto in working_proxies: working_proxies[proto].add(proxy_line)
-                    print(f"\n[SUCCESS] Proxy: {proxy_line:<22} | Anonymity: {details['anonymity']:<11} | Protocols: {','.join(details['protocols']):<15} | Timeout: {details['timeout']}ms")
-                    if len(working_proxies['all']) % SAVE_BATCH_SIZE == 0:
-                        _save_working_proxies(working_proxies, args.prepend_protocol, output_base_name)
-                elif args.verbose:
-                    print(".", end="", flush=True)
-            except Exception as exc:
-                if args.verbose:
-                    print(f"\n[ERROR] An exception occurred while checking proxy {proxy_from_future}: {exc}")
-
-    except KeyboardInterrupt:
-        print("\n\n[INTERRUPTED] User stopped the script. Shutting down threads immediately...")
-        executor.shutdown(wait=False, cancel_futures=True)
-        
+    def save_resume_file():
+        """Save remaining proxies to resume file."""
         proxies_to_recheck = set(all_unique_proxies) - submitted_proxies
         proxies_to_recheck.update(in_flight.values())
-        
+
+        if not proxies_to_recheck:
+            return
+
         if args.output:
-             base, ext = os.path.splitext(args.output)
-             if not ext: ext = ".txt"
-             resume_filename = f"{base}-resume{ext}"
+            base, ext = os.path.splitext(args.output)
+            if not ext: ext = ".txt"
+            resume_filename = f"{base}-resume{ext}"
         else:
-             resume_filename = f"proxies-to-resume-{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.txt"
-             
+            resume_filename = f"proxies-to-resume-{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.txt"
+
         print(f"[INFO] Saving {len(proxies_to_recheck)} remaining proxies to '{resume_filename}'...")
-        
+
         try:
             directory = os.path.dirname(resume_filename)
             if directory and not os.path.exists(directory):
@@ -221,16 +180,84 @@ def main():
             with open(resume_filename, 'w', encoding='utf-8') as f_out:
                 for proxy in sorted(list(proxies_to_recheck)):
                     f_out.write(proxy + '\n')
-            
+
             print(f"[SUCCESS] Resume file created. To continue, run with --input '{resume_filename}'")
         except Exception as e:
             print(f"\n[ERROR] Could not save resume file: {e}")
 
-    except Exception as e:
-        print(f"\n[ERROR] An unexpected error occurred: {e}")
-        executor.shutdown(wait=False, cancel_futures=True)
+    with termination_context(callbacks=[shutdown_executor]):
+        try:
+            print(f"[INFO] Your public IP is: {checker.ip}")
+            print(f"--- Starting check on {len(all_unique_proxies)} unique proxies with {args.threads} workers and a {timeout}s timeout ---")
 
-    finally:
+            for proxy in all_unique_proxies:
+                if should_terminate():
+                    print("\n[INFO] Termination requested, stopping proxy submission...")
+                    break
+
+                future = executor.submit(check_and_format_proxy, checker, proxy)
+                in_flight[future] = proxy
+                submitted_proxies.add(proxy)
+
+                while len(in_flight) >= args.threads * 2:
+                    if should_terminate():
+                        print("\n[INFO] Termination requested, stopping result collection...")
+                        break
+
+                    done_futures, _ = wait(in_flight.keys(), return_when='FIRST_COMPLETED')
+                    for future_done in done_futures:
+                        proxy_from_future = in_flight.pop(future_done)
+                        try:
+                            result = future_done.result()
+                            if result:
+                                proxy_line, details = result
+                                working_proxies['all'].add(proxy_line)
+                                for proto in details.get('protocols', []):
+                                    if proto in working_proxies: working_proxies[proto].add(proxy_line)
+                                print(f"\n[SUCCESS] Proxy: {proxy_line:<22} | Anonymity: {details['anonymity']:<11} | Protocols: {','.join(details['protocols']):<15} | Timeout: {details['timeout']}ms")
+                                if len(working_proxies['all']) % SAVE_BATCH_SIZE == 0:
+                                    _save_working_proxies(working_proxies, args.prepend_protocol, output_base_name)
+                            elif args.verbose:
+                                print(".", end="", flush=True)
+                        except Exception as exc:
+                            if args.verbose:
+                                print(f"\n[ERROR] An exception occurred while checking proxy {proxy_from_future}: {exc}")
+
+                if should_terminate():
+                    break
+
+            if not should_terminate():
+                print("\n[INFO] All proxies have been submitted. Waiting for the last checks to complete...")
+
+            for future_done in as_completed(in_flight):
+                if should_terminate() and len(working_proxies['all']) % SAVE_BATCH_SIZE == 0:
+                    print("\n[INFO] Termination requested, stopping final result collection...")
+                    break
+
+                proxy_from_future = in_flight.pop(future_done)
+                try:
+                    result = future_done.result()
+                    if result:
+                        proxy_line, details = result
+                        working_proxies['all'].add(proxy_line)
+                        for proto in details.get('protocols', []):
+                            if proto in working_proxies: working_proxies[proto].add(proxy_line)
+                        print(f"\n[SUCCESS] Proxy: {proxy_line:<22} | Anonymity: {details['anonymity']:<11} | Protocols: {','.join(details['protocols']):<15} | Timeout: {details['timeout']}ms")
+                        if len(working_proxies['all']) % SAVE_BATCH_SIZE == 0:
+                            _save_working_proxies(working_proxies, args.prepend_protocol, output_base_name)
+                    elif args.verbose:
+                        print(".", end="", flush=True)
+                except Exception as exc:
+                    if args.verbose:
+                        print(f"\n[ERROR] An exception occurred while checking proxy {proxy_from_future}: {exc}")
+
+        except Exception as e:
+            print(f"\n[ERROR] An unexpected error occurred: {e}")
+
+        if should_terminate():
+            print("\n\n[INTERRUPTED] User stopped the script. Saving partial results...")
+            save_resume_file()
+
         print(f"\n\n--- Check Finished or Interrupted ---")
         total_found = len(working_proxies['all'])
         print(f"Found {total_found} working proxies in total.")
