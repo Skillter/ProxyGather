@@ -263,6 +263,7 @@ def main():
 
         except Exception as e:
             print(f"[ERROR] An unexpected error occurred: {e}")
+            return
 
         if should_terminate():
             print("[INTERRUPTED] User stopped the script. Saving partial results...")

@@ -97,6 +97,7 @@ class JSStringParser:
                 self.pos += 1
             math_expr = self.expr[start:self.pos]
             try:
+                if not re.match(r'^[\d\s+\-*/().]+$', math_expr): return 0
                 return int(eval(math_expr, {"__builtins__":{}}))
             except:
                 return 0
@@ -172,14 +173,14 @@ def scrape_from_proxynova(verbose: bool = True) -> List[str]:
                 ip = _deobfuscate_ip(js_code)
                 
                 # 2. Extract Port
-                cells = row_html.split('<td')
-                if len(cells) < 3: continue
-                
-                port_html = cells[2]
+                cells = re.findall(r'<td[^>]*>([\s\S]*?)</td>', row_html)
+                if len(cells) < 2: continue
+
+                port_html = cells[1]
                 port_match = PORT_REGEX.search(port_html)
                 if not port_match:
                     continue
-                
+
                 port = port_match.group(1)
                 
                 if ip and port:
