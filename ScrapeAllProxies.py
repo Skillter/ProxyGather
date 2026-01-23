@@ -49,9 +49,9 @@ def save_proxies_to_file(proxies: list, filename: str):
         with open(filename, 'w', encoding='utf-8') as f:
             for proxy in proxies:
                 f.write(proxy + '\n')
-        print(f"\n[SUCCESS] Successfully saved {len(proxies)} unique proxies to '{filename}'")
+        print(f"[SUCCESS] Successfully saved {len(proxies)} unique proxies to '{filename}'")
     except IOError as e:
-        print(f"\n[ERROR] Could not write to file '{filename}': {e}")
+        print(f"[ERROR] Could not write to file '{filename}': {e}")
 
 def parse_sites_file(filename: str) -> List[Tuple[str, Union[Dict, None], Union[Dict, None]]]:
     scrape_targets = []
@@ -150,10 +150,10 @@ def show_legal_disclaimer(auto_accept=False):
     while True:
         response = input("Type 'y' or 'yes' to accept and continue in aggressive mode: ").strip().lower()
         if response in ['y', 'yes']:
-            print("\n[INFO] Proceeding in aggressive mode. You are responsible for legal compliance.\n")
+            print("[INFO] Proceeding in aggressive mode. You are responsible for legal compliance.\n")
             return True
         elif response in ['n', 'no']:
-            print("\n[INFO] Operation cancelled. Use --compliant for legal compliance.")
+            print("[INFO] Operation cancelled. Use --compliant for legal compliance.")
             sys.exit(0)
         else:
             print("Invalid input. Please type 'y', 'yes', 'n', or 'no'.")
@@ -259,7 +259,7 @@ def main():
             if name in tasks_to_run:
                 del tasks_to_run[name]
                 removed_automation.append(name)
-        
+
         if removed_automation and args.verbose:
             print(f"[INFO] Skipped browser automation scrapers by default: {', '.join(removed_automation)}")
             print("[INFO] Use --use-browser-automation to enable them.")
@@ -272,9 +272,9 @@ def main():
     headful_tasks_present = any(name in tasks_to_run for name in HEADFUL_SCRAPERS)
 
     if headful_tasks_present and sys.platform == "linux" and not os.environ.get('DISPLAY'):
-        print("[INFO] Linux/WSL detected. Checking for xvfb-run...")
+        print("\n[INFO] Linux/WSL detected. Checking for xvfb-run...")
         if shutil.which("xvfb-run"):
-            print("[INFO] xvfb-run found. Re-launching inside a virtual display...")
+            print("\n[INFO] xvfb-run found. Re-launching inside a virtual display...")
             command = [shutil.which("xvfb-run"), '--auto-servernum', sys.executable, *sys.argv]
             subprocess.run(command)
             sys.exit(0)
@@ -367,14 +367,14 @@ def main():
                                 successful_general_urls.extend(urls)
                             else:
                                 results[name] = result_data
-                            print(f"[COMPLETED] '{name}' finished, found {len(results.get(name, []))} proxies.")
+                            print(f"\n[COMPLETED] '{name}' finished, found {len(results.get(name, []))} proxies.")
                         except TimeoutError:
                             results[name] = []
-                            print(f"[TIMEOUT] Scraper '{name}' exceeded execution time. Cancelling...")
+                            print(f"\n[TIMEOUT] Scraper '{name}' exceeded execution time. Cancelling...")
                             future.cancel()
                         except Exception as e:
                             results[name] = []
-                            print(f"[ERROR] Scraper '{name}' failed: {e}")
+                            print(f"\n[ERROR] Scraper '{name}' failed: {e}")
         finally:
             for executor in executors:
                 executor.shutdown(wait=True, cancel_futures=True)
@@ -389,10 +389,10 @@ def main():
                             successful_general_urls.extend(urls)
                         else:
                             results[name] = result_data
-                        print(f"[RECOVERED] '{name}' finished after shutdown, found {len(results.get(name, []))} proxies.")
+                        print(f"\n[RECOVERED] '{name}' finished after shutdown, found {len(results.get(name, []))} proxies.")
                     except Exception as e:
                         results[name] = []
-                        print(f"[ERROR] Could not recover results from '{name}': {e}")
+                        print(f"\n[ERROR] Could not recover results from '{name}': {e}")
 
         print("\n--- Combining and processing all results ---")
         combined_proxies = {p for proxy_list in results.values() if proxy_list for p in proxy_list if p and p.strip()}
@@ -400,7 +400,7 @@ def main():
 
         spam_count = len(combined_proxies) - len(final_proxies)
         if spam_count > 0:
-            print(f"[INFO] Removed {spam_count} spam/invalid proxies from reserved IP ranges.")
+            print(f"\n[INFO] Removed {spam_count} spam/invalid proxies from reserved IP ranges.")
 
         print("\n--- Summary ---")
         for name in sorted(results.keys()): print(f"Found {len(results.get(name, []))} proxies from {name}.")
@@ -412,7 +412,7 @@ def main():
             print("\nCould not find any proxies from any source.")
 
         if args.remove_dead_links and successful_general_urls:
-            print(f"\n[INFO] Updating '{SITES_FILE}' to remove dead links...")
+            print(f"\n\n[INFO] Updating '{SITES_FILE}' to remove dead links...")
             try:
                 lines_to_keep = []
                 with open(SITES_FILE, 'r', encoding='utf-8') as f:
@@ -422,12 +422,12 @@ def main():
                             lines_to_keep.append(line)
                 with open(SITES_FILE, 'w', encoding='utf-8') as f:
                     f.writelines(lines_to_keep)
-                print(f"[SUCCESS] Successfully updated '{SITES_FILE}'.")
+                print(f"\n[SUCCESS] Successfully updated '{SITES_FILE}'.")
             except Exception as e:
-                print(f"[ERROR] Failed to update '{SITES_FILE}': {e}")
+                print(f"\n[ERROR] Failed to update '{SITES_FILE}': {e}")
 
         if should_terminate():
-            print("\n[INFO] Script terminated by user. Partial results have been saved.")
+            print("\n\n[INFO] Script terminated by user. Partial results have been saved.")
             return
 
 if __name__ == "__main__":

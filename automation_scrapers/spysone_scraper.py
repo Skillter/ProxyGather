@@ -25,7 +25,7 @@ def _extract_proxies_from_html(sb: BaseCase, verbose: bool = False) -> Set[str]:
 
     # --- Attempt 1: Original Fast Regex ---
     if verbose:
-        print("[DEBUG] Spys.one: Attempting primary extraction method (Original Regex)...")
+        print("\n[DEBUG] Spys.one: Attempting primary extraction method (Original Regex)...")
     pattern_original = r'<font class="spy14">(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})<script>.*?</script>:(\d+)</font>'
     try:
         matches = re.findall(pattern_original, html_content, re.DOTALL)
@@ -33,7 +33,7 @@ def _extract_proxies_from_html(sb: BaseCase, verbose: bool = False) -> Set[str]:
             for ip, port in matches:
                 proxies.add(f"{ip}:{port}")
             if verbose:
-                print(f"[DEBUG] Spys.one: Primary method successful. Found {len(proxies)} proxies.")
+                print(f"\n[DEBUG] Spys.one: Primary method successful. Found {len(proxies)} proxies.")
             return proxies
     except Exception as e:
         if verbose:
@@ -41,7 +41,7 @@ def _extract_proxies_from_html(sb: BaseCase, verbose: bool = False) -> Set[str]:
 
     # --- Attempt 2: New Regex for the alternative structure ---
     if verbose:
-        print("[DEBUG] Spys.one: Original Regex failed. Attempting secondary method (New Regex)...")
+        print("\n[DEBUG] Spys.one: Original Regex failed. Attempting secondary method (New Regex)...")
     # This pattern matches the structure: <font>IP<script/> <font>:</font>PORT</font>
     pattern_new = r'<font class="spy14">(\d{1,3}(?:\.\d{1,3}){3})<script.*?</script>\s*<font class="spy2">:</font>(\d+)</font>'
     try:
@@ -50,7 +50,7 @@ def _extract_proxies_from_html(sb: BaseCase, verbose: bool = False) -> Set[str]:
             for ip, port in matches:
                 proxies.add(f"{ip}:{port}")
             if verbose:
-                print(f"[DEBUG] Spys.one: Secondary (New Regex) method successful. Found {len(proxies)} proxies.")
+                print(f"\n[DEBUG] Spys.one: Secondary (New Regex) method successful. Found {len(proxies)} proxies.")
             return proxies
     except Exception as e:
         if verbose:
@@ -58,11 +58,11 @@ def _extract_proxies_from_html(sb: BaseCase, verbose: bool = False) -> Set[str]:
 
     # --- Attempt 3 (Fallback): Robust Rendered Text Parsing ---
     if verbose:
-        print("[INFO] Spys.one: Both Regex methods failed. Falling back to tertiary method (rendered text)...")
+        print("\n[INFO] Spys.one: Both Regex methods failed. Falling back to tertiary method (rendered text)...")
     try:
         proxy_rows = sb.find_elements("tr.spy1x, tr.spy1xx")
         if not proxy_rows and verbose:
-            print("[WARN] Spys.one Fallback: Could not find any proxy table rows (tr.spy1x, tr.spy1xx).")
+            print("\n[WARN] Spys.one Fallback: Could not find any proxy table rows (tr.spy1x, tr.spy1xx).")
 
         for row in proxy_rows:
             try:
@@ -72,24 +72,24 @@ def _extract_proxies_from_html(sb: BaseCase, verbose: bool = False) -> Set[str]:
                     proxies.add(proxy_string)
             except Exception as e_inner:
                 if verbose:
-                    print(f"[DEBUG] Spys.one Fallback: Could not parse a row. Error: {e_inner}")
+                    print(f"\n[DEBUG] Spys.one Fallback: Could not parse a row. Error: {e_inner}")
                 continue
         
         if verbose:
-            print(f"[DEBUG] Spys.one: Fallback method found {len(proxies)} proxies.")
+            print(f"\n[DEBUG] Spys.one: Fallback method found {len(proxies)} proxies.")
     
     except Exception as e:
         if verbose:
-            print(f"[ERROR] Spys.one: The fallback extraction method failed critically. Error: {e}")
+            print(f"\n[ERROR] Spys.one: The fallback extraction method failed critically. Error: {e}")
 
     return proxies
 def _handle_turnstile(sb: BaseCase, verbose: bool, callable_after_page_reload: Callable=None):
     if turnstile.is_turnstile_present(sb, 10):
-        if verbose: print("[INFO] Spys.one: Cloudflare challenge detected. Solving...")
+        if verbose: print("\n[INFO] Spys.one: Cloudflare challenge detected. Solving...")
         _uc_gui_click_captcha(sb, callable_after_page_reload=callable_after_page_reload, verbose=verbose)
 
         sb.wait_for_element_present('body > table:nth-child(3)', timeout=20)
-        if verbose: print("[SUCCESS] Spys.one: Challenge solved.")
+        if verbose: print("\n[SUCCESS] Spys.one: Challenge solved.")
 
 def scrape_from_spysone(sb: BaseCase, verbose: bool = False, turnstile_delay: float = 0) -> List[str]:
     """
@@ -97,7 +97,7 @@ def scrape_from_spysone(sb: BaseCase, verbose: bool = False, turnstile_delay: fl
     Compatible with Windows and Linux on Python 3.12.9.
     """
     if verbose:
-        print("[RUNNING] 'Spys.one' automation scraper has started.")
+        print("\n[RUNNING] 'Spys.one' automation scraper has started.")
 
     all_proxies = set()
     base_url = "https://spys.one/en/"
@@ -107,9 +107,9 @@ def scrape_from_spysone(sb: BaseCase, verbose: bool = False, turnstile_delay: fl
     for attempt in range(1, MAX_RETRIES + 1):
         try:
             if verbose and attempt > 1:
-                print(f"[RETRY] Spys.one: Attempt {attempt}/{MAX_RETRIES} to access {base_url}...")
+                print(f"\n[RETRY] Spys.one: Attempt {attempt}/{MAX_RETRIES} to access {base_url}...")
 
-            if verbose: print(f"[INFO] Spys.one: Navigating to {base_url}...")
+            if verbose: print(f"\n[INFO] Spys.one: Navigating to {base_url}...")
             sb.open(base_url)
             sb.ad_block()
 
@@ -120,12 +120,12 @@ def scrape_from_spysone(sb: BaseCase, verbose: bool = False, turnstile_delay: fl
         except Exception as e:
             if attempt < MAX_RETRIES:
                 if verbose:
-                    print(f"[WARN] Spys.one: Failed to access page (attempt {attempt}/{MAX_RETRIES}): {e}")
-                    print(f"[RETRY] Waiting {RETRY_DELAY}s before retry...")
+                    print(f"\n[WARN] Spys.one: Failed to access page (attempt {attempt}/{MAX_RETRIES}): {e}")
+                    print(f"\n[RETRY] Waiting {RETRY_DELAY}s before retry...")
                 time.sleep(RETRY_DELAY)
             else:
                 if verbose:
-                    print(f"[ERROR] Spys.one: Failed to access {base_url} after {MAX_RETRIES} attempts")
+                    print(f"\n[ERROR] Spys.one: Failed to access {base_url} after {MAX_RETRIES} attempts")
                 return sorted(list(all_proxies))
 
     try:
@@ -142,7 +142,7 @@ def scrape_from_spysone(sb: BaseCase, verbose: bool = False, turnstile_delay: fl
         # Extract proxies from initial page using the new combined method
         initial_proxies = _extract_proxies_from_html(sb, verbose)
         all_proxies.update(initial_proxies)
-        if verbose: print(f"[INFO] Spys.one: Found {len(initial_proxies)} proxies on initial page.")
+        if verbose: print(f"\n[INFO] Spys.one: Found {len(initial_proxies)} proxies on initial page.")
         
         try:
             time.sleep(0.5)
@@ -179,7 +179,7 @@ def scrape_from_spysone(sb: BaseCase, verbose: bool = False, turnstile_delay: fl
         # Process each configuration
         for i, config in enumerate(page_configs):
             if verbose:
-                print(f"[INFO] Spys.one: Processing configuration {i+1}/{len(page_configs)}: {config}")
+                print(f"\n[INFO] Spys.one: Processing configuration {i+1}/{len(page_configs)}: {config}")
             
             try:
                 # sb.execute_script("""
@@ -196,7 +196,7 @@ def scrape_from_spysone(sb: BaseCase, verbose: bool = False, turnstile_delay: fl
                         sb.get_element(f'#{dropdown_id}', timeout=5).click()
                         sb.select_option_by_value(f'#{dropdown_id}', value, timeout=5)
                         time.sleep(0.5)  # Small delay for JS to react
-                        if verbose: print(f"[INFO] Spysone: Applying dropdown selection: {dropdown_id} -> {value}")
+                        if verbose: print(f"\n[INFO] Spysone: Applying dropdown selection: {dropdown_id} -> {value}")
                     callable_after_page_reload()
                     # time.sleep(3)
                     _handle_turnstile(sb, verbose=verbose, callable_after_page_reload=callable_after_page_reload)
@@ -219,7 +219,7 @@ def scrape_from_spysone(sb: BaseCase, verbose: bool = False, turnstile_delay: fl
                 new_proxies = _extract_proxies_from_html(sb, verbose)
                 if len(new_proxies) <= 0:
                     filename = "spysone-error-no-proxies.html"
-                    print("[ERROR] Spy.one: No proxies found on the page, assuming something went wrong. Saving the page content to " + filename)
+                    print("\n[ERROR] Spy.one: No proxies found on the page, assuming something went wrong. Saving the page content to " + filename)
                     with open(filename, 'w', encoding='utf-8') as f:
                         f.write(sb.get_page_source())
                 
@@ -229,22 +229,22 @@ def scrape_from_spysone(sb: BaseCase, verbose: bool = False, turnstile_delay: fl
                 newly_added = len(all_proxies) - before_count
                 
                 if verbose:
-                    print(f"[INFO]   ... Found {len(new_proxies)} proxies, {newly_added} new unique. Total: {len(all_proxies)}")
+                    print(f"\n[INFO]   ... Found {len(new_proxies)} proxies, {newly_added} new unique. Total: {len(all_proxies)}")
                 
                 # Be respectful between page loads
                 time.sleep(3)
                 
             except Exception as e:
                 if verbose:
-                    print(f"[ERROR] Failed to process configuration {i+1}: {e}")
+                    print(f"\n[ERROR] Failed to process configuration {i+1}: {e}")
                 continue
     
     except Exception as e:
         if verbose:
-            print(f"[ERROR] A critical exception occurred in Spys.one scraper: {e}")
+            print(f"\n[ERROR] A critical exception occurred in Spys.one scraper: {e}")
     
     if verbose:
-        print(f"[INFO] Spys.one: Finished. Found a total of {len(all_proxies)} unique proxies.")
+        print(f"\n[INFO] Spys.one: Finished. Found a total of {len(all_proxies)} unique proxies.")
     
     return sorted(list(all_proxies))
 

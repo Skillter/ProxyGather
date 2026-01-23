@@ -34,10 +34,10 @@ def _save_working_proxies(proxy_data, prepend_protocol, output_base, is_final=Fa
                     else:
                         f.write(f"{proxy}\n")
         except IOError as e:
-            print(f"\n[ERROR] Could not write to output file '{filename}': {e}")
+            print(f"[ERROR] Could not write to output file '{filename}': {e}")
     if not is_final:
         total_proxies = len(proxy_data.get('all', set()))
-        print(f"\n[PROGRESS] Interim save complete. {total_proxies} total working proxies saved.")
+        print(f"[PROGRESS] Interim save complete. {total_proxies} total working proxies saved.")
 
 def check_and_format_proxy(checker, proxy_line):
     """A helper function to be run in each thread."""
@@ -130,7 +130,7 @@ def main():
         return
 
     # --- Pass the verbose flag to the checker ---
-    print("\n[INFO] Initializing Proxy Checker...")
+    print("[INFO] Initializing Proxy Checker...")
     checker = ProxyChecker(timeout=timeout, verbose=args.verbose)
     if not checker.ip:
         print("[ERROR] Could not determine your public IP. Aborting check.")
@@ -183,7 +183,7 @@ def main():
 
             print(f"[SUCCESS] Resume file created. To continue, run with --input '{resume_filename}'")
         except Exception as e:
-            print(f"\n[ERROR] Could not save resume file: {e}")
+            print(f"[ERROR] Could not save resume file: {e}")
 
     with termination_context(callbacks=[shutdown_executor]):
         try:
@@ -192,7 +192,7 @@ def main():
 
             for proxy in all_unique_proxies:
                 if should_terminate():
-                    print("\n[INFO] Termination requested, stopping proxy submission...")
+                    print("[INFO] Termination requested, stopping proxy submission...")
                     break
 
                 future = executor.submit(check_and_format_proxy, checker, proxy)
@@ -201,7 +201,7 @@ def main():
 
                 while len(in_flight) >= args.threads * 2:
                     if should_terminate():
-                        print("\n[INFO] Termination requested, stopping result collection...")
+                        print("[INFO] Termination requested, stopping result collection...")
                         break
 
                     # Use timeout to allow checking for termination
@@ -218,25 +218,25 @@ def main():
                                 working_proxies['all'].add(proxy_line)
                                 for proto in details.get('protocols', []):
                                     if proto in working_proxies: working_proxies[proto].add(proxy_line)
-                                print(f"\n[SUCCESS] Proxy: {proxy_line:<22} | Anonymity: {details['anonymity']:<11} | Protocols: {','.join(details['protocols']):<15} | Timeout: {details['timeout']}ms")
+                                print(f"[SUCCESS] Proxy: {proxy_line:<22} | Anonymity: {details['anonymity']:<11} | Protocols: {','.join(details['protocols']):<15} | Timeout: {details['timeout']}ms")
                                 if len(working_proxies['all']) % SAVE_BATCH_SIZE == 0:
                                     _save_working_proxies(working_proxies, args.prepend_protocol, output_base_name)
                             elif args.verbose:
                                 print(".", end="", flush=True)
                         except Exception as exc:
                             if args.verbose:
-                                print(f"\n[ERROR] An exception occurred while checking proxy {proxy_from_future}: {exc}")
+                                print(f"[ERROR] An exception occurred while checking proxy {proxy_from_future}: {exc}")
 
                 if should_terminate():
                     break
 
             if not should_terminate():
-                print("\n[INFO] All proxies have been submitted. Waiting for the last checks to complete...")
+                print("[INFO] All proxies have been submitted. Waiting for the last checks to complete...")
 
             # Wait for remaining futures with timeout check
             while in_flight:
                 if should_terminate():
-                    print("\n[INFO] Termination requested during final wait...")
+                    print("[INFO] Termination requested during final wait...")
                     break
                 
                 done_futures, _ = wait(in_flight.keys(), timeout=0.5, return_when='FIRST_COMPLETED')
@@ -252,23 +252,23 @@ def main():
                             working_proxies['all'].add(proxy_line)
                             for proto in details.get('protocols', []):
                                 if proto in working_proxies: working_proxies[proto].add(proxy_line)
-                            print(f"\n[SUCCESS] Proxy: {proxy_line:<22} | Anonymity: {details['anonymity']:<11} | Protocols: {','.join(details['protocols']):<15} | Timeout: {details['timeout']}ms")
+                            print(f"[SUCCESS] Proxy: {proxy_line:<22} | Anonymity: {details['anonymity']:<11} | Protocols: {','.join(details['protocols']):<15} | Timeout: {details['timeout']}ms")
                             if len(working_proxies['all']) % SAVE_BATCH_SIZE == 0:
                                 _save_working_proxies(working_proxies, args.prepend_protocol, output_base_name)
                         elif args.verbose:
                             print(".", end="", flush=True)
                     except Exception as exc:
                         if args.verbose:
-                            print(f"\n[ERROR] An exception occurred while checking proxy {proxy_from_future}: {exc}")
+                            print(f"[ERROR] An exception occurred while checking proxy {proxy_from_future}: {exc}")
 
         except Exception as e:
-            print(f"\n[ERROR] An unexpected error occurred: {e}")
+            print(f"[ERROR] An unexpected error occurred: {e}")
 
         if should_terminate():
-            print("\n\n[INTERRUPTED] User stopped the script. Saving partial results...")
+            print("[INTERRUPTED] User stopped the script. Saving partial results...")
             save_resume_file()
 
-        print(f"\n\n--- Check Finished or Interrupted ---")
+        print("--- Check Finished or Interrupted ---")
         total_found = len(working_proxies['all'])
         print(f"Found {total_found} working proxies in total.")
         if total_found > 0:

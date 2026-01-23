@@ -59,7 +59,7 @@ class TerminationHandler:
             try:
                 callback()
             except Exception as e:
-                print(f"[ERROR] Cleanup callback failed: {e}")
+                print(f"\n[ERROR] Cleanup callback failed: {e}")
 
     def register_callback(self, callback: Callable):
         """Register a cleanup callback to run on termination."""

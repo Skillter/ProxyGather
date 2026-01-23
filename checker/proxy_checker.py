@@ -67,22 +67,22 @@ class ProxyChecker:
             'http://proxy.web-hosting.com/azenv.php'
         ]
 
-        print("[INFO] Checking the health and content of proxy judges...")
+        print("\n[INFO] Checking the health and content of proxy judges...")
         self.live_judges = []
         for judge in initial_judges:
             result = self._send_query_internal(url=judge)
             if isinstance(result, dict) and 'REMOTE_ADDR' in result.get('response', ''):
                 self.live_judges.append(judge)
-                print(f"[INFO]   ... Judge is VALID: {judge}")
+                print(f"\n[INFO]   ... Judge is VALID: {judge}")
             elif self.verbose:
-                print(f"[WARN]   ... Judge is DEAD or returned INVALID content: {judge}")
+                print(f"\n[WARN]   ... Judge is DEAD or returned INVALID content: {judge}")
         
         if not self.live_judges:
             print("\n[CRITICAL] No valid proxy judges found. Cannot perform checks.")
             self.ip = ""
             return
             
-        print(f"[INFO] Using {len(self.live_judges)} valid proxy judges for all checks.")
+        print(f"\n[INFO] Using {len(self.live_judges)} valid proxy judges for all checks.")
         self.ip = self.get_ip()
 
     def get_ip(self):
