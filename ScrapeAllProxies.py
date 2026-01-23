@@ -211,14 +211,14 @@ def main():
 
     if (args.only is not None and not args.only) or (args.exclude is not None and not args.exclude):
         print("Available scraper sources are:")
-        print(f"  {general_scraper_name} - Websites from {SITES_FILE}")
+        print(f"  {general_scraper_name} (Websites from {SITES_FILE})")
         for name in all_scraper_names:
             if name != general_scraper_name:
                 extra_info = []
                 if name in ANTI_BOT_BYPASS_SCRAPERS and args.compliant:
                     extra_info.append("SKIPPED in --compliant mode")
                 if name in AUTOMATION_SCRAPER_NAMES and not args.use_browser_automation:
-                    extra_info.append("Disabled by default")
+                    extra_info.append("Pass --use-browser-automation to enable")
                 
                 marker_str = f" ({', '.join(extra_info)})" if extra_info else ""
                 print(f"  {name}{marker_str}")
