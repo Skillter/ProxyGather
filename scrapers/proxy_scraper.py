@@ -189,6 +189,22 @@ def _fetch_and_extract_single(url: str, payload: Union[Dict, None], headers: Uni
             print(f"[ERROR] HTTP {e.response.status_code if e.response else 'error'} for {url}", flush=True)
         return set(), True
     except requests.exceptions.RequestException as e:
+        # Check for fatal errors to avoid futile retries
+        error_str = str(e).lower()
+        fatal_indicators = [
+            "name resolution failure", 
+            "name service not known", 
+            "getaddrinfo failed",
+            "ssl error",
+            "certificate verify failed"
+        ]
+        
+        if any(indicator in error_str for indicator in fatal_indicators):
+             if verbose:
+                # Log as error but return True to indicate "done/fatal", stopping retries
+                print(f"[ERROR] Fatal connection error for {url}: {e} (skipping retries)", flush=True)
+             return set(), True
+
         if verbose:
             print(f"[RETRY] Request failed for {url}: {e} (will retry)", flush=True)
         return set(), False
@@ -229,6 +245,8 @@ def _scrape_paginated_url(base_url: str, base_payload: Union[Dict, None], base_h
                 if verbose: print("[INFO]   ... No new unique proxies found. Ending pagination.", flush=True)
                 break
         else:
+            # If we failed (success=False) we might want to retry/continue, but if we succeeded with 0 results (success=True), we stop.
+            # In paginated logic, if we get 0 proxies, we usually assume end of list.
             if verbose: print(f"[INFO]   ... No proxies found on page {page_num}. Ending pagination.", flush=True)
             break
 

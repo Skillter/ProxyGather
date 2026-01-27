@@ -1,7 +1,7 @@
 ﻿import re
 import json
 from typing import List, Set, Any
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from helper.request_utils import get_with_retry
 
@@ -13,6 +13,43 @@ PAGE_COUNT_PREFIX = re.compile(r'^\[\d+\](.+)$')
 URL_REGEX = re.compile(r'https?://[^\s<>"\'\)\]\}]+')
 # Pattern to match raw.githubusercontent.com URLs for jsdelivr conversion
 RAW_GITHUB_REGEX = re.compile(r'https?://raw\.githubusercontent\.com/([^/]+)/([^/]+)/(.+)$')
+
+# Domains that are known to be dead, require specific automation, or are just noise (search engines)
+IGNORED_DOMAINS = {
+    'internet.limited',       # Dead / DNS failures
+    'www.proxy-list.download', # Consistent timeouts
+    'hidemy.name',            # Requires browser automation/Cloudflare bypass (not supported in general scraper)
+    'free-proxy-list.com',    # SSL Errors
+    'openproxy.space',        # Often fails/blocks bots
+    'google.com', 'bing.com', 'yahoo.com', 'yandex.ru', 'baidu.com',
+    'instagram.com', 'tiktok.com', 'youtube.com', 'facebook.com', 'twitter.com', 'linkedin.com',
+    't.me', 'discord.gg',     # Chat apps require specific parsing
+    'vpnoverview.com',        # Blog articles, not raw lists
+    'smallseotools.com',
+    'netzwelt.de',
+    'whoer.io',               # Connection timeouts
+}
+
+def is_url_allowed(url: str) -> bool:
+    """Checks if the URL's domain is in the ignored list."""
+    try:
+        parsed = urlparse(url)
+        netloc = parsed.netloc.lower()
+        
+        # Remove port if present
+        if ':' in netloc:
+            netloc = netloc.split(':')[0]
+            
+        # Remove 'www.' prefix
+        if netloc.startswith('www.'):
+            netloc = netloc[4:]
+        
+        if netloc in IGNORED_DOMAINS:
+            return False
+            
+        return True
+    except:
+        return False
 
 def convert_to_jsdelivr_url(url: str) -> str:
     """
@@ -165,12 +202,18 @@ def discover_urls_from_file(filename: str, verbose: bool = False, threads: int =
                 pass
 
     # Convert raw.githubusercontent.com URLs to fastly.jsdelivr.net
+    # AND filter out ignored domains
     converted_urls = set()
     for url in discovered:
-        converted_urls.add(convert_to_jsdelivr_url(url))
+        if is_url_allowed(url):
+            converted_urls.add(convert_to_jsdelivr_url(url))
+        elif verbose:
+            # Optional: log what we are skipping to debug
+            # print(f"[DEBUG] Discovery: Skipping ignored domain in {url}")
+            pass
 
     if verbose:
-        print(f"[INFO] Discovery: Found {len(discovered)} potential target URLs.", flush=True)
+        print(f"[INFO] Discovery: Found {len(converted_urls)} potential target URLs (after filtering).", flush=True)
 
     return sorted(list(converted_urls))
 
