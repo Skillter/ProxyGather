@@ -258,7 +258,7 @@ def main():
         'Proxy-Daily': lambda verbose: scrape_from_proxydaily(verbose=verbose, compliant_mode=args.compliant),
         'ProxyNova': scrape_from_proxynova,
         'PremProxy': scrape_from_premproxy,
-        'Discovery': run_discovery_scraper, # New discovery source
+        'Discover': run_discovery_scraper,
     }
     
     AUTOMATION_SCRAPER_NAMES = ['OpenProxyList', 'Hide.mn', 'Spys.one']
