@@ -8,6 +8,7 @@ import subprocess
 import tempfile
 from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError, wait, FIRST_COMPLETED
 from typing import List, Dict, Union, Tuple
+from urllib.parse import urlparse
 from seleniumbase import SB
 
 from scrapers.proxy_scraper import scrape_proxies
@@ -28,9 +29,11 @@ from scrapers.premproxy_scraper import scrape_from_premproxy
 from automation_scrapers.spysone_scraper import scrape_from_spysone
 from automation_scrapers.openproxylist_scraper import scrape_from_openproxylist
 from automation_scrapers.hidemn_scraper import scrape_from_hidemn
+from scrapers.source_discoverer import discover_urls_from_file
 from helper.termination import termination_context, should_terminate, get_termination_handler
 
 SITES_FILE = 'sites-to-get-proxies-from.txt'
+SOURCES_FILE = 'sites-to-get-sources-from.txt'
 DEFAULT_OUTPUT_FILE = 'scraped-proxies.txt'
 INDIVIDUAL_SCRAPER_TIMEOUT = 100
 MAX_TOTAL_RUNTIME = 300
@@ -180,6 +183,52 @@ def main():
     if not args.compliant and not (args.only is not None and not args.only) and not (args.exclude is not None and not args.exclude):
         show_legal_disclaimer(auto_accept=args.yes)
 
+    scrape_targets = []
+
+    def run_discovery_scraper(verbose: bool):
+        """Wrapper to run the discovery process and then scrape found URLs."""
+        discovered_urls = discover_urls_from_file(SOURCES_FILE, verbose=verbose)
+        if not discovered_urls:
+            return []
+        
+        # Logic: Don't scrape from discovered source urls, if their domain is already gonna be scraped from site-to-get-proxies-from.txt
+        # UNLESS the Websites category isn't selected for the scraping run.
+        if general_scraper_name in tasks_to_run:
+            existing_domains = set()
+            for t_url, _, _ in scrape_targets:
+                try:
+                    netloc = urlparse(t_url).netloc
+                    # Remove 'www.' for broader matching
+                    if netloc.startswith("www."): netloc = netloc[4:]
+                    existing_domains.add(netloc)
+                except: pass
+            
+            filtered_urls = []
+            for d_url in discovered_urls:
+                try:
+                    d_netloc = urlparse(d_url).netloc
+                    if d_netloc.startswith("www."): d_netloc = d_netloc[4:]
+                    
+                    if d_netloc not in existing_domains:
+                        filtered_urls.append(d_url)
+                except: pass
+            
+            if verbose and len(filtered_urls) < len(discovered_urls):
+                print(f"[INFO] {discovery_scraper_name}: Skipped {len(discovered_urls) - len(filtered_urls)} URLs because their domain is already in {SITES_FILE}.", flush=True)
+            
+            discovered_urls = filtered_urls
+
+        if not discovered_urls:
+            return []
+
+        # Convert simple URLs to the target format (url, payload, headers)
+        targets = [(url, None, None) for url in discovered_urls]
+        
+        # Run the generic proxy scraper on these targets
+        # Note: scrape_proxies returns (proxies, successful_urls). We return only the proxies list.
+        proxies, _ = scrape_proxies(targets, verbose=verbose, max_workers=args.threads, respect_robots_txt=args.compliant)
+        return proxies
+
     all_scraper_tasks = {
         'ProxyScrape': fetch_from_api,
         'Geonode': scrape_from_geonode_api,
@@ -198,12 +247,14 @@ def main():
         'Proxy-Daily': lambda verbose: scrape_from_proxydaily(verbose=verbose, compliant_mode=args.compliant),
         'ProxyNova': scrape_from_proxynova,
         'PremProxy': scrape_from_premproxy,
+        'Discovery': run_discovery_scraper, # New discovery source
     }
     
     AUTOMATION_SCRAPER_NAMES = ['OpenProxyList', 'Hide.mn', 'Spys.one']
     ANTI_BOT_BYPASS_SCRAPERS = ['OpenProxyList', 'Hide.mn', 'Spys.one', 'XSEO', 'ProxyDocker', 'Advanced.name', 'ProxyServers.pro', 'ProxyNova', 'PremProxy']
     HEADFUL_SCRAPERS = ['Hide.mn', 'Spys.one']
     general_scraper_name = 'Websites'
+    discovery_scraper_name = 'Discover'
     all_scraper_names = sorted(list(all_scraper_tasks.keys()) + [general_scraper_name])
 
     if args.compliant:
@@ -211,15 +262,17 @@ def main():
 
     if (args.only is not None and not args.only) or (args.exclude is not None and not args.exclude):
         print("Available scraper sources are:", flush=True)
-        print(f"  {general_scraper_name} (Websites from {SITES_FILE})", flush=True)
+        print(f"  {general_scraper_name} (URLs from {SITES_FILE})", flush=True)
+        print(f"  {discovery_scraper_name} (URLs discovered from website lists from {SOURCES_FILE})", flush=True)
         for name in all_scraper_names:
-            if name != general_scraper_name:
+            if name != general_scraper_name and name != discovery_scraper_name:
                 extra_info = []
                 if name in ANTI_BOT_BYPASS_SCRAPERS and args.compliant:
                     extra_info.append("SKIPPED in --compliant mode")
                 if name in AUTOMATION_SCRAPER_NAMES and not args.use_browser_automation:
                     extra_info.append("Pass --use-browser-automation to enable")
                 
+                marker_str = f" ({', '.join(extra_info)})" if extra_info else ""
                 marker_str = f" ({', '.join(extra_info)})" if extra_info else ""
                 print(f"  {name}{marker_str}", flush=True)
         sys.exit(0)
@@ -234,7 +287,8 @@ def main():
                     print(f"[INFO] Skipping '{scraper_name}' in compliant mode (uses anti-bot circumvention)", flush=True)
 
     try:
-        scrape_targets = parse_sites_file(SITES_FILE)
+        file_targets = parse_sites_file(SITES_FILE)
+        scrape_targets.extend(file_targets)
         if scrape_targets:
             tasks_to_run[general_scraper_name] = lambda verbose: scrape_proxies(scrape_targets, verbose=verbose, max_workers=args.threads, respect_robots_txt=args.compliant)
     except FileNotFoundError:

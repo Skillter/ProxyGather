@@ -199,6 +199,9 @@ def _scrape_paginated_url(base_url: str, base_payload: Union[Dict, None], base_h
     page_num = 1
     found_any = False
 
+    # Determine which placeholder format is used
+    page_placeholder = "[page]" if "[page]" in base_url or (base_payload and "[page]" in json.dumps(base_payload)) else "{page}"
+
     if verbose: print(f"\n[INFO] General Scraper: Starting pagination for {base_url}", flush=True)
 
     while True:
@@ -206,11 +209,11 @@ def _scrape_paginated_url(base_url: str, base_payload: Union[Dict, None], base_h
             if verbose: print(f"[INFO] General Scraper: Termination requested, stopping pagination for {base_url}", flush=True)
             break
 
-        current_url = base_url.replace("{page}", str(page_num))
+        current_url = base_url.replace(page_placeholder, str(page_num))
         current_payload = None
         if base_payload:
             payload_str = json.dumps(base_payload)
-            payload_str = payload_str.replace("{page}", str(page_num))
+            payload_str = payload_str.replace(page_placeholder, str(page_num))
             current_payload = json.loads(payload_str)
 
         if verbose: print(f"[INFO]   ... Scraping page {page_num} ({current_url})", flush=True)
@@ -253,7 +256,8 @@ def scrape_proxies(
     robots_checker = RobotsTxtChecker() if respect_robots_txt else None
 
     for url, payload, headers in scrape_targets:
-        is_paginated = "{page}" in url or ("{page}" in json.dumps(payload) if payload else False)
+        is_paginated = ("{page}" in url or "[page]" in url or
+                       ("{page}" in json.dumps(payload) or "[page]" in json.dumps(payload) if payload else False))
         if is_paginated:
             paginated_targets.append((url, payload, headers))
         else:
