@@ -29,7 +29,7 @@ from scrapers.premproxy_scraper import scrape_from_premproxy
 from automation_scrapers.spysone_scraper import scrape_from_spysone
 from automation_scrapers.openproxylist_scraper import scrape_from_openproxylist
 from automation_scrapers.hidemn_scraper import scrape_from_hidemn
-from scrapers.source_discoverer import discover_urls_from_file
+from scrapers.source_discoverer import discover_urls_from_file, convert_to_jsdelivr_url
 from helper.termination import termination_context, should_terminate, get_termination_handler
 
 SITES_FILE = 'sites-to-get-proxies-from.txt'
@@ -195,27 +195,38 @@ def main():
         # UNLESS the Websites category isn't selected for the scraping run.
         if general_scraper_name in tasks_to_run:
             existing_domains = set()
+            existing_urls = set()
             for t_url, _, _ in scrape_targets:
                 try:
-                    netloc = urlparse(t_url).netloc
+                    # Convert to jsdelivr format for consistent comparison
+                    converted_url = convert_to_jsdelivr_url(t_url)
+                    existing_urls.add(converted_url)
+                    netloc = urlparse(converted_url).netloc
                     # Remove 'www.' for broader matching
                     if netloc.startswith("www."): netloc = netloc[4:]
                     existing_domains.add(netloc)
                 except: pass
-            
+
             filtered_urls = []
             for d_url in discovered_urls:
                 try:
-                    d_netloc = urlparse(d_url).netloc
+                    # Already converted by discover_urls_from_file, but double-check
+                    converted_d_url = convert_to_jsdelivr_url(d_url)
+
+                    # Skip if exact URL already exists
+                    if converted_d_url in existing_urls:
+                        continue
+
+                    d_netloc = urlparse(converted_d_url).netloc
                     if d_netloc.startswith("www."): d_netloc = d_netloc[4:]
-                    
+
                     if d_netloc not in existing_domains:
                         filtered_urls.append(d_url)
                 except: pass
-            
+
             if verbose and len(filtered_urls) < len(discovered_urls):
                 print(f"[INFO] {discovery_scraper_name}: Skipped {len(discovered_urls) - len(filtered_urls)} URLs because their domain is already in {SITES_FILE}.", flush=True)
-            
+
             discovered_urls = filtered_urls
 
         if not discovered_urls:
