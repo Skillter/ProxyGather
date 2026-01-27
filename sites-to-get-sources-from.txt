@@ -1,1 +1,2 @@
-https://raw.githubusercontent.com/saschazesiger/Proxy-Grabber-and-Checker/refs/heads/main/Sources.txt
+https://fastly.jsdelivr.net/gh/saschazesiger/Proxy-Grabber-and-Checker@main/Sources.txt
+https://github.com/Tsprnay/Proxy-lists/raw/refs/heads/master/sites.json
