@@ -57,6 +57,10 @@ def cmd_scrape(args):
          timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
          args.output = f"scraped-proxies-{timestamp}.txt"
 
+    # Ensure 'threads' attribute exists for compatibility with ScrapeAllProxies
+    if not hasattr(args, 'threads'):
+        args.threads = args.scraper_threads
+
     run_scraper_pipeline(args, skip_disclaimer=True)
 
 def cmd_check(args):

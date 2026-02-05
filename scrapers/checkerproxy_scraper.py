@@ -1,6 +1,7 @@
 ﻿import time
 import random
 import re
+from datetime import datetime, timedelta
 from typing import List
 from helper.request_utils import get_with_retry
 
@@ -8,13 +9,7 @@ from helper.request_utils import get_with_retry
 ARCHIVE_LIST_URL = "https://api.checkerproxy.net/v1/landing/archive/"
 DAILY_PROXY_URL_TEMPLATE = "https://api.checkerproxy.net/v1/landing/archive/{date}"
 
-# Regex to validate proxy format (IP:PORT).
-# This ensures we only capture validly formatted strings.
-# ^ asserts position at start of the string
-# (\d{1,3}\.){3}\d{1,3} matches the IP address format
-# : matches the literal ":"
-# \d{1,5} matches the port number (1 to 5 digits)
-# $ asserts position at the end of the string
+# Regex to validate proxy format (IP:PORT)
 PROXY_VALIDATION_REGEX = re.compile(r"^(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{1,5})$")
 
 # Standard headers to mimic a browser
@@ -23,14 +18,13 @@ HEADERS = {
 }
 
 # Polite scraping configuration
-BASE_DELAY_SECONDS = 1
-RANDOM_DELAY_RANGE = (0.2, 0.8)
+BASE_DELAY_SECONDS = 0.3
+RANDOM_DELAY_RANGE = (0.1, 0.4)
+
 
 def scrape_checkerproxy_archive(verbose: bool = True) -> List[str]:
     """
     Scrapes all available proxy lists from the checkerproxy.net API archive.
-    It handles multiple proxy list formats, validates each entry with regex,
-    and provides detailed logging.
 
     Args:
         verbose: If True, prints detailed status messages to the console.
@@ -40,12 +34,11 @@ def scrape_checkerproxy_archive(verbose: bool = True) -> List[str]:
     """
     all_proxies = set()
     
-    # This function is called from a concurrent setup, so print a starting message.
     print("\n[RUNNING] 'CheckerProxy' scraper has started.", flush=True)
 
     # --- Step 1: Get the list of available dates ---
     try:
-        response = get_with_retry(url=ARCHIVE_LIST_URL, headers=HEADERS, timeout=20, verbose=verbose, verify=False)
+        response = get_with_retry(url=ARCHIVE_LIST_URL, headers=HEADERS, timeout=20, verbose=verbose)
         archive_data = response.json()
 
         if not archive_data.get("success") or not archive_data.get("data", {}).get("items"):
@@ -70,15 +63,20 @@ def scrape_checkerproxy_archive(verbose: bool = True) -> List[str]:
 
         try:
             url = DAILY_PROXY_URL_TEMPLATE.format(date=date)
-            response = get_with_retry(url=url, headers=HEADERS, timeout=20, verbose=verbose, verify=False)
+            response = get_with_retry(url=url, headers=HEADERS, timeout=20, verbose=verbose)
             daily_data = response.json()
 
-            if not daily_data.get("success") or not daily_data.get("data", {}).get("proxyList"):
+            if not daily_data.get("success"):
                 if verbose:
-                    print(f"[WARN] CheckerProxy: No valid data for {date}. Skipping.", flush=True)
+                    print(f"[WARN] CheckerProxy: API returned unsuccessful for {date}. Skipping.", flush=True)
                 continue
 
-            proxy_list = daily_data['data']['proxyList']
+            proxy_list = daily_data.get('data', {}).get('proxyList', [])
+            if not proxy_list:
+                if verbose:
+                    print(f"[INFO] CheckerProxy: No proxies found for {date}.", flush=True)
+                continue
+
             valid_count = 0
             invalid_count = 0
 
@@ -104,4 +102,3 @@ def scrape_checkerproxy_archive(verbose: bool = True) -> List[str]:
         print(f"[INFO] CheckerProxy: Finished. Processed {len(all_proxies)} unique proxies.", flush=True)
 
     return sorted(list(all_proxies))
-
