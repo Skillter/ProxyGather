@@ -46,7 +46,7 @@ def scrape_from_fineproxy(verbose: bool = True) -> List[str]:
         print(f"[INFO] FineProxy: Fetching main page {MAIN_URL}...", flush=True)
 
     try:
-        response = session.get(MAIN_URL, timeout=20)
+        response = session.get(MAIN_URL, timeout=20, verify=False)
         
         # Check for blocking
         if response.status_code == 403:
@@ -92,7 +92,7 @@ def scrape_from_fineproxy(verbose: bool = True) -> List[str]:
         # Polite delay before hitting the API
         time.sleep(1.5)
 
-        api_response = session.get(API_URL, params=params, timeout=20)
+        api_response = session.get(API_URL, params=params, timeout=20, verify=False)
         api_response.raise_for_status()
         
         # The API returns a plain text list of IP:PORT

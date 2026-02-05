@@ -3,6 +3,10 @@ import time
 import requests
 from typing import List
 
+# Disable SSL certificate verification warnings
+from urllib3.exceptions import InsecureRequestWarning
+requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
+
 # The main lists available on ProxyNova
 URLS = [
     "https://www.proxynova.com/proxy-server-list/",
@@ -149,7 +153,7 @@ def scrape_from_proxynova(verbose: bool = True) -> List[str]:
             print(f"[INFO] ProxyNova: Scraping {url}...", flush=True)
             
         try:
-            response = requests.get(url, headers=HEADERS, timeout=20)
+            response = requests.get(url, headers=HEADERS, timeout=20, verify=False)
             if response.status_code != 200:
                 if verbose: print(f"[WARN] ProxyNova: HTTP {response.status_code} for {url}", flush=True)
                 continue

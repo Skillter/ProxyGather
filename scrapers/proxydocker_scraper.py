@@ -3,6 +3,10 @@ import re
 import time
 from typing import List
 
+# Disable SSL certificate verification warnings
+from urllib3.exceptions import InsecureRequestWarning
+requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
+
 CAPTCHA_CHECK_URL = "https://www.proxydocker.com/api/captcha/check"
 MAIN_URL = "https://www.proxydocker.com/"
 API_URL = "https://www.proxydocker.com/en/api/proxylist/"
@@ -36,14 +40,14 @@ def scrape_from_proxydocker(verbose: bool = True) -> List[str]:
         if verbose:
             print(f"[INFO] ProxyDocker: Initializing session at {CAPTCHA_CHECK_URL}...", flush=True)
         
-        init_response = session.post(CAPTCHA_CHECK_URL, timeout=15)
+        init_response = session.post(CAPTCHA_CHECK_URL, timeout=15, verify=False)
         if init_response.status_code != 200 and verbose:
             print(f"[WARN] ProxyDocker: Captcha check returned status {init_response.status_code}, proceeding anyway.", flush=True)
 
         if verbose:
             print(f"[INFO] ProxyDocker: Fetching main page to extract token...", flush=True)
             
-        main_response = session.get(MAIN_URL, timeout=15)
+        main_response = session.get(MAIN_URL, timeout=15, verify=False)
         main_response.raise_for_status()
         
         match = TOKEN_REGEX.search(main_response.text)
@@ -74,7 +78,7 @@ def scrape_from_proxydocker(verbose: bool = True) -> List[str]:
                 print(f"[INFO] ProxyDocker: Scraping API page {page}...", flush=True)
                 
             try:
-                api_response = session.post(API_URL, data=payload, timeout=20)
+                api_response = session.post(API_URL, data=payload, timeout=20, verify=False)
                 api_response.raise_for_status()
                 
                 json_data = api_response.json()

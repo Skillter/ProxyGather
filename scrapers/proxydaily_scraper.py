@@ -3,6 +3,10 @@ import requests
 from typing import List
 from urllib.robotparser import RobotFileParser
 
+# Disable SSL certificate verification warnings
+from urllib3.exceptions import InsecureRequestWarning
+requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
+
 API_URL = "https://proxy-daily.com/api/serverside/proxies"
 ROBOTS_URL = "https://proxy-daily.com/robots.txt"
 BATCH_SIZE = 100  # Server likely limits response size, so we paginate
@@ -78,7 +82,7 @@ def scrape_from_proxydaily(verbose: bool = True, compliant_mode: bool = False) -
             print(f"[INFO] Proxy-Daily: Fetching proxies starting at index {start}...", flush=True)
 
         try:
-            response = requests.get(API_URL, headers=HEADERS, params=params, timeout=20)
+            response = requests.get(API_URL, headers=HEADERS, params=params, timeout=20, verify=False)
             response.raise_for_status()
             data = response.json()
             

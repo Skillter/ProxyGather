@@ -193,7 +193,7 @@ def _fetch_and_extract_single(url: str, payload: Union[Dict, None], headers: Uni
     except requests.exceptions.RequestException as e:
         # Check for fatal errors to avoid futile retries
         error_str = str(e).lower()
-        fatal_indicators = ["name resolution failure", "name service not known", "getaddrinfo failed", "ssl error", "certificate verify failed"]
+        fatal_indicators = ["name resolution failure", "name service not known", "getaddrinfo failed"]
         if any(indicator in error_str for indicator in fatal_indicators):
              if verbose: print(f"[ERROR] Fatal connection error for {url}: {e} (skipping retries)", flush=True)
              return set(), True
