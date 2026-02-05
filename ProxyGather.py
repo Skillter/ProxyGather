@@ -2,7 +2,6 @@
 import sys
 import queue
 import threading
-import time
 from datetime import datetime
 from collections import defaultdict
 from typing import Set, Dict
@@ -115,8 +114,11 @@ def cmd_run(args):
     class ScraperArgsWrapper:
         def __init__(self, original_args, output_file):
             self.__dict__ = original_args.__dict__.copy()
-            self.threads = original_args.scraper_threads
             self.output = output_file
+            # Handle both --scraper-threads (creates scraper_threads attr) and 
+            # --threads (creates threads attr from ScrapeAllProxies standalone usage)
+            self.threads = getattr(original_args, 'scraper_threads',
+                                   getattr(original_args, 'threads', 50))
             
     def scraper_worker():
         s_args = ScraperArgsWrapper(args, scraped_file)
@@ -152,7 +154,8 @@ def main():
 
     def add_scraper_args(p):
         p.add_argument('--output', default=DEFAULT_OUTPUT_FILE)
-        p.add_argument('--scraper-threads', dest='threads', type=int, default=50)
+        # Note: We use 'scraper_threads' as dest to avoid conflict with checker's 'threads'
+        p.add_argument('--scraper-threads', type=int, default=50)
         p.add_argument('--automation-threads', type=int, default=3)
         p.add_argument('--turnstile-delay', type=float, default=0)
         p.add_argument('--remove-dead-links', action='store_true')
@@ -160,7 +163,7 @@ def main():
         p.add_argument('--use-browser-automation', action='store_true')
         p.add_argument('-y', '--yes', action='store_true')
         p.add_argument('--only', nargs='*')
-        p.add_argument('--exclude', nargs='*')
+        p.add_argument('--exclude', nargs='*', help="Exclude scrapers from the run")
         p.add_argument('-v', '--verbose', action='store_true')
 
     def add_checker_args(p):

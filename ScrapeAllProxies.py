@@ -6,7 +6,7 @@ import re
 import shutil
 import subprocess
 import tempfile
-from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError, wait, FIRST_COMPLETED
+from concurrent.futures import ThreadPoolExecutor, as_completed, wait, FIRST_COMPLETED
 from typing import List, Dict, Union, Tuple, Set, Optional, Callable
 from urllib.parse import urlparse
 from seleniumbase import SB
@@ -299,6 +299,9 @@ def run_scraper_pipeline(
         for name in AUTOMATION_SCRAPER_NAMES:
             if name in tasks_to_run: del tasks_to_run[name]
 
+    # Get threads value - handle both 'threads' (legacy) and 'scraper_threads' (new) attribute names
+    threads = getattr(args, 'scraper_threads', getattr(args, 'threads', 50))
+
     if not tasks_to_run:
         print("[ERROR] No scrapers selected.", flush=True)
         return []
@@ -349,7 +352,7 @@ def run_scraper_pipeline(
     with safe_termination_context():
         if normal_tasks:
             print(f"--- Submitting {len(normal_tasks)} regular scraper(s)...", flush=True)
-            ex = ThreadPoolExecutor(max_workers=args.threads, thread_name_prefix='NormalScraper')
+            ex = ThreadPoolExecutor(max_workers=threads, thread_name_prefix='NormalScraper')
             executors.append(ex)
             for name, func in normal_tasks.items():
                 future_to_scraper[ex.submit(func, args.verbose)] = name
@@ -430,7 +433,7 @@ def main():
     parser.add_argument('-y', '--yes', action='store_true')
     group = parser.add_mutually_exclusive_group()
     group.add_argument('--only', nargs='*')
-    group.add_argument('--exclude', nargs='*')
+    group.add_argument('--exclude', '--except', nargs='*')
 
     args = parser.parse_args()
     proxies = run_scraper_pipeline(args)

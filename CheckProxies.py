@@ -174,16 +174,17 @@ def run_checker_pipeline(args, input_queue: Optional[queue.Queue] = None, result
                                 working_proxies['all'].add(line)
                                 for p in details.get('protocols', []):
                                     if p in working_proxies: working_proxies[p].add(line)
-                                
+
                                 print(f"\n[SUCCESS] Proxy: {line:<21} | Anon: {details['anonymity']:<11} | {','.join(details['protocols']):<14} | {details['timeout']}ms", flush=True)
                                 if len(working_proxies['all']) % SAVE_BATCH_SIZE == 0:
                                     _save_working_proxies(working_proxies, args.prepend_protocol, output_base_name)
-                                
+
                                 if result_callback: result_callback(proxy, True, details)
                             else:
                                 if args.verbose: print(".", end="", flush=True)
                                 if result_callback: result_callback(proxy, False, {})
-                        except Exception:
+                        except Exception as exc:
+                            if args.verbose: print(f"\n[ERROR] Exception checking {proxy}: {exc}", flush=True)
                             if result_callback: result_callback(proxy, False, {})
                 
                 if not in_flight and not pipeline_mode and pending_index >= len(pending_list):
