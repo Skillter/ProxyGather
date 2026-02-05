@@ -232,6 +232,8 @@ def run_scraper_pipeline(
             tasks_to_run[name] = lambda verbose: scrape_all_from_proxydb(verbose=verbose, compliant_mode=args.compliant)
         elif name == 'Proxy-Daily':
             tasks_to_run[name] = lambda verbose: scrape_from_proxydaily(verbose=verbose, compliant_mode=args.compliant)
+        elif name == 'Geonode':
+            tasks_to_run[name] = lambda verbose: scrape_from_geonode_api(verbose=verbose, compliant_mode=args.compliant)
         else:
             tasks_to_run[name] = func
 
