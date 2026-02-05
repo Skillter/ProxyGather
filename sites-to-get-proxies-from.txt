@@ -1,3 +1,7 @@
+https://openproxylist.xyz/http.txt
+https://openproxylist.xyz/socks4.txt
+https://openproxylist.xyz/socks5.txt
+
 https://www.socks-proxy.net/
 https://www.us-proxy.org/
 https://www.sslproxies.org/
@@ -80,9 +84,6 @@ https://www.my-proxy.com/free-proxy-list.html
 https://www.my-proxy.com/free-proxy-list-{page}.html
 
 
-https://list.proxylistplus.com/SSL-List-{page}
-https://list.proxylistplus.com/Fresh-HTTP-Proxy-List-{page}
-https://list.proxylistplus.com/Socks-List-{page}
 
 
 https://ab57.ru/proxylist.html

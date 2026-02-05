@@ -25,9 +25,10 @@ IGNORED_DOMAINS = {
     'instagram.com', 'tiktok.com', 'youtube.com', 'facebook.com', 'twitter.com', 'linkedin.com',
     't.me', 'discord.gg',     # Chat apps require specific parsing
     'vpnoverview.com',        # Blog articles, not raw lists
-    'smallseotools.com',
+    'smallseotools.com',    
     'netzwelt.de',
     'whoer.io',               # Connection timeouts
+    'proxylistplus.com', 'list.proxylistplus.com' # All of their proxies are dead
 }
 
 def is_url_allowed(url: str) -> bool:

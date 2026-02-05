@@ -3,9 +3,12 @@ import sys
 import argparse
 import os
 import re
+import queue
 from concurrent.futures import ThreadPoolExecutor, as_completed, wait
 from datetime import datetime
 import glob
+from typing import Optional, Callable, List
+import random
 
 from checker.proxy_checker import ProxyChecker
 from helper.termination import termination_context, should_terminate
@@ -15,13 +18,9 @@ SAVE_BATCH_SIZE = 25
 def _save_working_proxies(proxy_data, prepend_protocol, output_base, is_final=False):
     """Saves the working proxies, creating the output directory if needed."""
     base, ext = os.path.splitext(output_base)
-    if not ext:
-        ext = ".txt"
-
+    if not ext: ext = ".txt"
     directory = os.path.dirname(base)
-    if directory and not os.path.exists(directory):
-        print(f"[INFO] Creating output directory: {directory}", flush=True)
-        os.makedirs(directory)
+    if directory and not os.path.exists(directory): os.makedirs(directory)
 
     for protocol, proxies_set in proxy_data.items():
         if not proxies_set: continue
@@ -36,24 +35,19 @@ def _save_working_proxies(proxy_data, prepend_protocol, output_base, is_final=Fa
         except IOError as e:
             print(f"[ERROR] Could not write to output file '{filename}': {e}", flush=True)
     if not is_final:
-        total_proxies = len(proxy_data.get('all', set()))
-        print(f"[PROGRESS] Interim save complete. {total_proxies} total working proxies saved.", flush=True)
+        total = len(proxy_data.get('all', set()))
+        print(f"[PROGRESS] Interim save complete. {total} total working proxies.", flush=True)
 
 def check_and_format_proxy(checker, proxy_line):
-    """A helper function to be run in each thread."""
     details = checker.check_proxy(proxy_line)
-    if details:
-        return (proxy_line, details)
+    if details: return (proxy_line, details)
     return None
 
 def parse_timeout(timeout_str: str) -> float:
-    """Parses a timeout string like '500ms', '10s', or '8' into a float of seconds."""
     timeout_str = timeout_str.strip().lower()
     try:
-        if timeout_str.endswith('ms'):
-            return float(timeout_str[:-2]) / 1000.0
-        if timeout_str.endswith('s'):
-            return float(timeout_str[:-1])
+        if timeout_str.endswith('ms'): return float(timeout_str[:-2]) / 1000.0
+        if timeout_str.endswith('s'): return float(timeout_str[:-1])
         return float(timeout_str)
     except (ValueError, TypeError):
         raise ValueError("Invalid timeout format")
@@ -64,222 +58,165 @@ def load_proxies_from_patterns(patterns: list) -> list:
     and returns a de-duplicated list.
     """
     all_files = set()
-    for pattern in patterns:
-        all_files.update(glob.glob(pattern))
-
+    for pattern in patterns: all_files.update(glob.glob(pattern))
     if not all_files:
-        print("[ERROR] No files found matching the specified patterns.", flush=True)
-        sys.exit(1)
-        
-    print(f"[INFO] Found {len(all_files)} files to process:", flush=True)
-    for f in sorted(list(all_files)):
-        print(f"  - {f}", flush=True)
-
+        print("[ERROR] No files found matching patterns.", flush=True)
+        return []
+    
     unique_proxies = set()
     for filepath in all_files:
         try:
             with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
                 for line in f:
-                    proxy = line.strip()
-                    if proxy and not proxy.startswith('#'):
-                        unique_proxies.add(proxy)
-        except IOError as e:
-            print(f"[WARN] Could not read file {filepath}: {e}", flush=True)
-            
-    print(f"[INFO] Loaded {len(unique_proxies)} unique proxies from all source files.", flush=True)
-    return sorted(list(unique_proxies))
+                    p = line.strip()
+                    if p and not p.startswith('#'): unique_proxies.add(p)
+        except IOError: pass
+    
+    print(f"[INFO] Loaded {len(unique_proxies)} unique proxies from files.", flush=True)
+    
+    # Shuffle the proxies to avoid hitting large blocks of dead subnets (Tail of Death)
+    # which causes the checker to seemingly stall or slow down significantly.
+    proxy_list = list(unique_proxies)
+    random.shuffle(proxy_list)
+    return proxy_list
 
-
-def main():
-    parser = argparse.ArgumentParser(
-        description="A high-performance, memory-efficient proxy checker that can be safely interrupted and resumed."
-    )
-    parser.add_argument(
-        '--input', 
-        nargs='+',
-        default=['scraped-proxies.txt'], 
-        help="One or more input files or file patterns (e.g., 'proxies-*.txt')."
-    )
-    parser.add_argument(
-        '--output',
-        type=str,
-        default=None,
-        help="The base name for output files (e.g., 'results/verified'). If not provided, a timestamped name will be used."
-    )
-    parser.add_argument('--threads', type=int, default=500, help="Number of threads for checking proxies. Default: 500")
-    parser.add_argument(
-        '--timeout', 
-        type=str, 
-        default='6s', 
-        help="Timeout for each proxy check. E.g., '500ms', '10s', '8'. Default is 6 seconds."
-    )
-    parser.add_argument('--prepend-protocol', action='store_true', help="Prepend protocol to proxies in specific files.")
-    parser.add_argument('-v', '--verbose', action='store_true', help="Enable detailed logging for failures and diagnostics.")
-    args = parser.parse_args()
-
+def run_checker_pipeline(args, input_queue: Optional[queue.Queue] = None, result_callback: Optional[Callable[[str, bool, dict], None]] = None):
     try:
         timeout = parse_timeout(args.timeout)
         if timeout <= 0: timeout = 1.0
     except ValueError:
-        print(f"[ERROR] Invalid timeout format: {args.timeout}. Please use formats like '500ms', '10s', or '8'.", flush=True)
+        print(f"[ERROR] Invalid timeout: {args.timeout}", flush=True)
         return
 
-    all_unique_proxies = load_proxies_from_patterns(args.input)
-    if not all_unique_proxies:
-        print("[ERROR] No proxies to check after loading files. Exiting.", flush=True)
-        return
+    initial_proxies = []
+    if not input_queue:
+        initial_proxies = load_proxies_from_patterns(args.input)
+        if not initial_proxies:
+            print("[ERROR] No proxies to check.", flush=True)
+            return
 
-    # --- Pass the verbose flag to the checker ---
     print("[INFO] Initializing Proxy Checker...", flush=True)
     checker = ProxyChecker(timeout=timeout, verbose=args.verbose)
     if not checker.ip:
-        print("[ERROR] Could not determine your public IP. Aborting check.", flush=True)
+        print("[ERROR] Could not determine public IP. Aborting.", flush=True)
         return
     
-    if args.output:
-        output_base_name = args.output
-    else:
-        now_str = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-        output_base_name = f"working-proxies-{now_str}"
+    if args.output: output_base_name = args.output
+    else: output_base_name = f"working-proxies-{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}"
 
     in_flight = {}
     submitted_proxies = set()
     working_proxies = {'all': set(), 'http': set(), 'socks4': set(), 'socks5': set()}
-
     executor = ThreadPoolExecutor(max_workers=args.threads)
 
     def shutdown_executor():
-        """Callback to shutdown the executor immediately."""
-        try:
-            executor.shutdown(wait=False, cancel_futures=True)
-        except Exception:
-            pass
+        try: executor.shutdown(wait=False, cancel_futures=True)
+        except: pass
 
     def save_resume_file():
-        """Save remaining proxies to resume file."""
-        proxies_to_recheck = set(all_unique_proxies) - submitted_proxies
-        proxies_to_recheck.update(in_flight.values())
-
-        if not proxies_to_recheck:
-            return
-
-        if args.output:
-            base, ext = os.path.splitext(args.output)
-            if not ext: ext = ".txt"
-            resume_filename = f"{base}-resume{ext}"
-        else:
-            resume_filename = f"proxies-to-resume-{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.txt"
-
-        print(f"[INFO] Saving {len(proxies_to_recheck)} remaining proxies to '{resume_filename}'...", flush=True)
-
+        # Only simple resume for file-based mode
+        if input_queue: return
+        remaining = set(initial_proxies) - submitted_proxies
+        remaining.update(in_flight.values())
+        if not remaining: return
+        
+        fname = f"{os.path.splitext(args.output)[0] if args.output else 'proxies'}-resume.txt"
         try:
-            directory = os.path.dirname(resume_filename)
-            if directory and not os.path.exists(directory):
-                os.makedirs(directory)
-
-            with open(resume_filename, 'w', encoding='utf-8') as f_out:
-                for proxy in sorted(list(proxies_to_recheck)):
-                    f_out.write(proxy + '\n')
-
-            print(f"[SUCCESS] Resume file created. To continue, run with --input '{resume_filename}'", flush=True)
+            with open(fname, 'w', encoding='utf-8') as f:
+                for p in sorted(list(remaining)): f.write(p + '\n')
+            print(f"[SUCCESS] Resume file saved: {fname}", flush=True)
         except Exception as e:
-            print(f"[ERROR] Could not save resume file: {e}", flush=True)
+            print(f"[ERROR] Failed to save resume file: {e}", flush=True)
 
     with termination_context(callbacks=[shutdown_executor]):
         try:
-            print(f"[INFO] Your public IP is: {checker.ip}", flush=True)
-            print(f"--- Starting check on {len(all_unique_proxies)} unique proxies with {args.threads} workers and a {timeout}s timeout ---", flush=True)
+            print(f"[INFO] Public IP: {checker.ip}")
+            print(f"--- Checking with {args.threads} workers, {timeout}s timeout ---", flush=True)
 
-            for proxy in all_unique_proxies:
-                if should_terminate():
-                    print("[INFO] Termination requested, stopping proxy submission...", flush=True)
-                    break
+            pending_list = list(initial_proxies)
+            pending_index = 0
+            pipeline_mode = (input_queue is not None)
+            
+            while True:
+                if should_terminate(): break
 
-                future = executor.submit(check_and_format_proxy, checker, proxy)
-                in_flight[future] = proxy
-                submitted_proxies.add(proxy)
-
-                while len(in_flight) >= args.threads * 2:
-                    if should_terminate():
-                        print("[INFO] Termination requested, stopping result collection...", flush=True)
-                        break
-
-                    # Use timeout to allow checking for termination
-                    done_futures, _ = wait(in_flight.keys(), timeout=0.5, return_when='FIRST_COMPLETED')
-                    if not done_futures:
-                        continue
-                        
-                    for future_done in done_futures:
-                        proxy_from_future = in_flight.pop(future_done)
+                while len(in_flight) < args.threads * 2:
+                    proxy_to_check = None
+                    
+                    if input_queue:
                         try:
-                            result = future_done.result()
+                            proxy_to_check = input_queue.get_nowait()
+                            if proxy_to_check is None: # Sentinel
+                                pipeline_mode = False
+                                break
+                        except queue.Empty: pass
+                    
+                    if not proxy_to_check and pending_index < len(pending_list):
+                        proxy_to_check = pending_list[pending_index]
+                        pending_index += 1
+                    
+                    if proxy_to_check:
+                        if proxy_to_check not in submitted_proxies:
+                            future = executor.submit(check_and_format_proxy, checker, proxy_to_check)
+                            in_flight[future] = proxy_to_check
+                            submitted_proxies.add(proxy_to_check)
+                    else:
+                        break
+                
+                if in_flight:
+                    done_futures, _ = wait(in_flight.keys(), timeout=0.1, return_when='FIRST_COMPLETED')
+                    for future in done_futures:
+                        proxy = in_flight.pop(future)
+                        try:
+                            result = future.result()
                             if result:
-                                proxy_line, details = result
-                                working_proxies['all'].add(proxy_line)
-                                for proto in details.get('protocols', []):
-                                    if proto in working_proxies: working_proxies[proto].add(proxy_line)
-                                # Force a newline before success message to avoid merging with progress dots
-                                print(f"\n[SUCCESS] Proxy: {proxy_line:<22} | Anonymity: {details['anonymity']:<11} | Protocols: {','.join(details['protocols']):<15} | Timeout: {details['timeout']}ms", flush=True)
+                                line, details = result
+                                working_proxies['all'].add(line)
+                                for p in details.get('protocols', []):
+                                    if p in working_proxies: working_proxies[p].add(line)
+                                
+                                print(f"\n[SUCCESS] Proxy: {line:<21} | Anon: {details['anonymity']:<11} | {','.join(details['protocols']):<14} | {details['timeout']}ms", flush=True)
                                 if len(working_proxies['all']) % SAVE_BATCH_SIZE == 0:
                                     _save_working_proxies(working_proxies, args.prepend_protocol, output_base_name)
-                            elif args.verbose:
-                                print(".", end="", flush=True)
-                        except Exception as exc:
-                            if args.verbose:
-                                print(f"\n[ERROR] An exception occurred while checking proxy {proxy_from_future}: {exc}", flush=True)
-
-                if should_terminate():
-                    break
-
-            if not should_terminate():
-                print("[INFO] All proxies have been submitted. Waiting for the last checks to complete...", flush=True)
-
-            # Wait for remaining futures with timeout check
-            while in_flight:
-                if should_terminate():
-                    print("[INFO] Termination requested during final wait...", flush=True)
+                                
+                                if result_callback: result_callback(proxy, True, details)
+                            else:
+                                if args.verbose: print(".", end="", flush=True)
+                                if result_callback: result_callback(proxy, False, {})
+                        except Exception:
+                            if result_callback: result_callback(proxy, False, {})
+                
+                if not in_flight and not pipeline_mode and pending_index >= len(pending_list):
                     break
                 
-                done_futures, _ = wait(in_flight.keys(), timeout=0.5, return_when='FIRST_COMPLETED')
-                if not done_futures:
-                    continue
-
-                for future_done in done_futures:
-                    proxy_from_future = in_flight.pop(future_done)
-                    try:
-                        result = future_done.result()
-                        if result:
-                            proxy_line, details = result
-                            working_proxies['all'].add(proxy_line)
-                            for proto in details.get('protocols', []):
-                                if proto in working_proxies: working_proxies[proto].add(proxy_line)
-                            print(f"\n[SUCCESS] Proxy: {proxy_line:<22} | Anonymity: {details['anonymity']:<11} | Protocols: {','.join(details['protocols']):<15} | Timeout: {details['timeout']}ms", flush=True)
-                            if len(working_proxies['all']) % SAVE_BATCH_SIZE == 0:
-                                _save_working_proxies(working_proxies, args.prepend_protocol, output_base_name)
-                        elif args.verbose:
-                            print(".", end="", flush=True)
-                    except Exception as exc:
-                        if args.verbose:
-                            print(f"\n[ERROR] An exception occurred while checking proxy {proxy_from_future}: {exc}", flush=True)
+                if not in_flight:
+                    import time
+                    time.sleep(0.5)
 
         except Exception as e:
-            print(f"[ERROR] An unexpected error occurred: {e}", flush=True)
+            print(f"[ERROR] Checker loop error: {e}", flush=True)
             return
 
         if should_terminate():
-            print("[INTERRUPTED] User stopped the script. Saving partial results...", flush=True)
+            print("[INTERRUPTED] Stopping...", flush=True)
             save_resume_file()
 
-        print("--- Check Finished or Interrupted ---", flush=True)
-        total_found = len(working_proxies['all'])
-        print(f"Found {total_found} working proxies in total.", flush=True)
-        if total_found > 0:
-            print(f"[INFO] Performing final save...", flush=True)
+        print("--- Check Finished ---", flush=True)
+        total = len(working_proxies['all'])
+        print(f"Found {total} working proxies.", flush=True)
+        if total > 0:
             _save_working_proxies(working_proxies, args.prepend_protocol, output_base_name, is_final=True)
-            print(f"[SUCCESS] Final lists saved.", flush=True)
-        else:
-            print("[INFO] No working proxies were found to save.", flush=True)
-            
+
+def main():
+    parser = argparse.ArgumentParser(description="Proxy checker.")
+    parser.add_argument('--input', nargs='+', default=['scraped-proxies.txt'])
+    parser.add_argument('--output', type=str, default=None)
+    parser.add_argument('--threads', type=int, default=500)
+    parser.add_argument('--timeout', type=str, default='6s')
+    parser.add_argument('--prepend-protocol', action='store_true')
+    parser.add_argument('-v', '--verbose', action='store_true')
+    args = parser.parse_args()
+    run_checker_pipeline(args)
+
 if __name__ == "__main__":
     main()
-

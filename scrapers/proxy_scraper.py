@@ -60,8 +60,8 @@ DEFAULT_HEADERS = {
 
 PROXY_VALIDATION_REGEX = re.compile(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{1,5}$')
 
-PAGINATED_RATELIMIT_DELAY = 0.8 # In seconds, before it was 1.5
-DOMAIN_RATELIMIT_DELAY = 0.5 # Delay between requests to the same domain
+PAGINATED_RATELIMIT_DELAY = 0.8
+DOMAIN_RATELIMIT_DELAY = 0.5
 
 # Thread-safe domain rate limiting
 class DomainRateLimiter:
@@ -94,14 +94,12 @@ class RobotsTxtChecker:
         with self.lock:
             if domain not in self.cache:
                 rp = RobotFileParser()
-                robots_url = urljoin(domain, '/robots.txt')
                 try:
                     rp.set_url(urljoin(domain, '/robots.txt'))
                     rp.read()
                     self.cache[domain] = rp
                 except Exception:
                     self.cache[domain] = None
-
         rp = self.cache[domain]
         if rp is None: return True
         return rp.can_fetch(user_agent, url)
@@ -134,6 +132,8 @@ def _recursive_json_search_and_extract(data: any, proxies_found: set):
 
 def extract_proxies_from_content(content: str, verbose: bool = False) -> set:
     proxies_found = set()
+    
+    # 1. Try JSON parsing
     try:
         json_data = json.loads(content)
         _recursive_json_search_and_extract(json_data, proxies_found)
