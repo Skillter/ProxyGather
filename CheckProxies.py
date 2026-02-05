@@ -4,7 +4,7 @@ import argparse
 import os
 import re
 import queue
-from concurrent.futures import ThreadPoolExecutor, as_completed, wait
+from concurrent.futures import ThreadPoolExecutor, as_completed, wait, FIRST_COMPLETED
 from datetime import datetime
 import glob
 from typing import Optional, Callable, List
@@ -120,7 +120,8 @@ def run_checker_pipeline(args, input_queue: Optional[queue.Queue] = None, result
         remaining.update(in_flight.values())
         if not remaining: return
         
-        fname = f"{os.path.splitext(args.output)[0] if args.output else 'proxies'}-resume.txt"
+        timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+        fname = f"proxies-to-resume-{timestamp}.txt"
         try:
             with open(fname, 'w', encoding='utf-8') as f:
                 for p in sorted(list(remaining)): f.write(p + '\n')
@@ -164,7 +165,7 @@ def run_checker_pipeline(args, input_queue: Optional[queue.Queue] = None, result
                         break
                 
                 if in_flight:
-                    done_futures, _ = wait(in_flight.keys(), timeout=0.1, return_when='FIRST_COMPLETED')
+                    done_futures, _ = wait(in_flight.keys(), timeout=0.1, return_when=FIRST_COMPLETED)
                     for future in done_futures:
                         proxy = in_flight.pop(future)
                         try:

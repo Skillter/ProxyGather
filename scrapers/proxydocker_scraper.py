@@ -128,7 +128,7 @@ def scrape_from_proxydocker(verbose: bool = True) -> List[str]:
                 # Stop if we didn't find any *new* proxies to avoid infinite loops on some APIs
                 # that might return the same last page repeatedly
                 if new_count == 0 and len(proxies_on_page) > 0:
-                     pass 
+                     break 
 
                 page += 1
                 time.sleep(1) # Polite delay

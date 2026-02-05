@@ -112,7 +112,7 @@ def scrape_from_proxyservers(verbose: bool = True) -> List[str]:
                  # If we found matches but they were all duplicates, we might be looping or at the end of useful lists.
                  # Usually paginated lists eventually return empty or 404, but let's be safe.
                  if len(all_proxies) > 0: # Only stop if we already have data, otherwise keep trying next page might have fresh ones
-                     pass 
+                     break 
 
             page += 1
             time.sleep(1.5) # Polite delay

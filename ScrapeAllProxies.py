@@ -36,6 +36,7 @@ from helper.termination import termination_context, should_terminate, get_termin
 SITES_FILE = 'sites-to-get-proxies-from.txt'
 SOURCES_FILE = 'sites-to-get-sources-from.txt'
 DEFAULT_OUTPUT_FILE = 'scraped-proxies.txt'
+__all__ = ['DEFAULT_OUTPUT_FILE', 'run_scraper_pipeline', 'list_available_scrapers', 'show_legal_disclaimer']
 INVALID_IP_REGEX = re.compile(
     r"^(10\.|127\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.|169\.254\.|0\.|2(2[4-9]|3[0-9])\.|2(4[0-9]|5[0-5])\.)"
 )

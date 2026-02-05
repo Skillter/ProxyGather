@@ -740,6 +740,7 @@ def _uc_gui_click_captcha(
 
 
 def uc_gui_click_captcha(sb: BaseCase, frame="iframe", retry=False, blind=False):
+    """Public wrapper for the internal _uc_gui_click_captcha function."""
     _uc_gui_click_captcha(
         sb,
         frame=frame,

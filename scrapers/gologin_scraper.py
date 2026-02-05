@@ -66,10 +66,10 @@ def scrape_from_gologin_api(verbose: bool = False) -> List[str]:
         response = get_with_retry(url=GEOXY_API_URL, headers=api_headers, timeout=30, verbose=verbose)
         proxy_data = response.json()
         
-    except Exception as e:
-        raise Exception(f"Could not fetch proxies from the Geoxy API: {e}") from e
     except ValueError as e: # Catches JSON decoding errors
         raise Exception(f"Failed to decode JSON from Geoxy API response: {e}") from e
+    except Exception as e:
+        raise Exception(f"Could not fetch proxies from the Geoxy API: {e}") from e
 
     # --- Step 4: Parse the JSON response and extract proxy addresses ---
     all_proxies = set()

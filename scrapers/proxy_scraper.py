@@ -75,10 +75,9 @@ class DomainRateLimiter:
         with self.locks[domain]:
             elapsed = time.time() - self.last_request_time[domain]
             sleep_time = max(0, self.delay - elapsed)
+            if sleep_time > 0:
+                time.sleep(sleep_time)
             self.last_request_time[domain] = time.time()
-
-        if sleep_time > 0:
-            time.sleep(sleep_time)
 
 class RobotsTxtChecker:
     """Thread-safe robots.txt checker with caching."""

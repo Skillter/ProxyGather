@@ -80,11 +80,11 @@ def scrape_from_geonode_api(verbose: bool = False) -> List[str]:
                 print(f"[INFO]   ... Waiting for {sleep_duration:.2f} seconds.", flush=True)
             time.sleep(sleep_duration)
 
-        except Exception:
-            break # Stop on any network-related error
         except (ValueError, KeyError) as e:
             if verbose:
                 print(f"[ERROR] Could not parse JSON response from Geonode on page {page}: {e}", flush=True)
             break # Stop if the JSON is malformed
+        except Exception:
+            break # Stop on any network-related error
 
     return sorted(list(all_proxies))

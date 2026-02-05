@@ -33,23 +33,21 @@ def _solve_challenge_and_get_creds(sb: BaseCase, url: str, verbose: bool, turnst
                 print("[INFO] Hide.mn: Cloudflare challenge detected. Attempting to solve...")
             sb.uc_gui_click_captcha()
 
-
-        # sb.wait_for_element_present(selector='.table_block > table:nth-child(1)', timeout=20)
-            try:
-                sb.wait_for_element_present(selector='.table_block > table:nth-child(1)', timeout=20)
-            except Exception as e:
+        # Wait for table element after challenge handling
+        try:
+            sb.wait_for_element_present(selector='.table_block > table:nth-child(1)', timeout=20)
+        except Exception as e:
+            if verbose:
+                print("[WARN] Hide.mn: First attempt failed, trying alternative method.")
+            if turnstile_delay > 0:
                 if verbose:
-                    print("[SUCCESS] Hide.mn: First challenge solving failed, trying alternative method.")
-                if turnstile_delay > 0:
-                    if verbose:
-                        print(f"[INFO] Hide.mn: --turnstile-delay present. Waiting {turnstile_delay} seconds for Turnstile to load...")
-                    time.sleep(turnstile_delay)
-                    sb.uc_gui_handle_cf()
-                if verbose:
-                    print("[INFO] Hide.mn: Waiting for the table element...")  
-                sb.wait_for_element_present(selector='.table_block > table:nth-child(1)', timeout=20)
-        else:
-            raise Exception("[ERROR] Hide.mn: No Cloudflare challenge detected.")
+                    print(f"[INFO] Hide.mn: --turnstile-delay present. Waiting {turnstile_delay} seconds for Turnstile to load...")
+                time.sleep(turnstile_delay)
+                sb.uc_gui_handle_cf()
+            if verbose:
+                print("[INFO] Hide.mn: Waiting for the table element...")  
+            sb.wait_for_element_present(selector='.table_block > table:nth-child(1)', timeout=20)
+        
         if verbose:
             print("[SUCCESS] Hide.mn: Challenge solved or bypassed. Table is present.")
         
