@@ -18,7 +18,7 @@ from scrapers.proxydb_scraper import scrape_all_from_proxydb
 from scrapers.geonode_scraper import scrape_from_geonode_api
 from scrapers.checkerproxy_scraper import scrape_checkerproxy_archive
 from scrapers.proxylistorg_scraper import scrape_from_proxylistorg
-from scrapers.xseo_scraper import scrape_from_xseo
+# from scrapers.xseo_scraper import scrape_from_xseo # Deprecated, server gone
 from scrapers.gologin_scraper import scrape_from_gologin_api
 from scrapers.proxyhttp_scraper import scrape_from_proxyhttp
 from scrapers.proxydocker_scraper import scrape_from_proxydocker
@@ -50,7 +50,7 @@ ALL_SCRAPER_TASKS = {
     'Spys.one': scrape_from_spysone,
     'OpenProxyList': scrape_from_openproxylist,
     'Hide.mn': scrape_from_hidemn,
-    'XSEO': scrape_from_xseo,
+    # 'XSEO': scrape_from_xseo, # Deprecated, server gone
     'GoLogin': scrape_from_gologin_api,
     'ProxyList.org': scrape_from_proxylistorg,
     'ProxyHttp': scrape_from_proxyhttp,
@@ -64,7 +64,7 @@ ALL_SCRAPER_TASKS = {
     'Websites': None # Handled dynamically
 }
 AUTOMATION_SCRAPER_NAMES = ['OpenProxyList', 'Hide.mn', 'Spys.one']
-ANTI_BOT_BYPASS_SCRAPERS = ['OpenProxyList', 'Hide.mn', 'Spys.one', 'XSEO', 'ProxyDocker', 'Advanced.name', 'ProxyServers.pro', 'ProxyNova', 'PremProxy']
+ANTI_BOT_BYPASS_SCRAPERS = ['OpenProxyList', 'Hide.mn', 'Spys.one', 'ProxyDocker', 'Advanced.name', 'ProxyServers.pro', 'ProxyNova', 'PremProxy']
 
 def save_proxies_to_file(proxies: list, filename: str):
     try:
