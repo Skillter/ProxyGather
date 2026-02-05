@@ -219,7 +219,7 @@ class ProxyChecker:
             final_result['country_code'] = country[1]
 
         if check_address:
-            remote_regex = r'REMOTE_ADDR = (\d{1,3}\.\d{1,3}\.\d{1,3}\d{1,3})'
+            remote_regex = r'REMOTE_ADDR = (\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})'
             remote_addr = re.search(remote_regex, r)
             if remote_addr:
                 final_result['remote_address'] = remote_addr.group(1)
