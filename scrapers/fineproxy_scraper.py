@@ -27,7 +27,7 @@ HEADERS = {
 # Looks for: "nonce":"f99f9c33e7"
 NONCE_REGEX = re.compile(r'"nonce"\s*:\s*"([^"]+)"')
 
-def scrape_from_fineproxy(verbose: bool = True) -> List[str]:
+def scrape_from_fineproxy(verbose: bool = False) -> List[str]:
     """
     Scrapes proxies from FineProxy.org using a session to handle cookies.
     1. Extracts proxies from the HTML of the main page.

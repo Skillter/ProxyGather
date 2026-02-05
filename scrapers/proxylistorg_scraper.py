@@ -22,7 +22,7 @@ HEADERS = {
 BASE_DELAY_SECONDS = 1.0
 RANDOM_DELAY_RANGE = (0.1, 0.5)
 
-def scrape_from_proxylistorg(verbose: bool = True) -> List[str]:
+def scrape_from_proxylistorg(verbose: bool = False) -> List[str]:
     """
     Scrapes all pages from proxy-list.org by iterating through page numbers.
 

@@ -25,7 +25,7 @@ def _decode_base64(encoded_str: str) -> str:
     except Exception:
         return ""
 
-def scrape_from_advancedname(verbose: bool = True) -> List[str]:
+def scrape_from_advancedname(verbose: bool = False) -> List[str]:
     """
     Scrapes proxies from advanced.name/freeproxy.
     Extracts Base64 encoded IP and Port from HTML data attributes and decodes them.

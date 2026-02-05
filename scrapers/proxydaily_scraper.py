@@ -18,7 +18,7 @@ HEADERS = {
     'Referer': 'https://proxy-daily.com/'
 }
 
-def scrape_from_proxydaily(verbose: bool = True, compliant_mode: bool = False) -> List[str]:
+def scrape_from_proxydaily(verbose: bool = False, compliant_mode: bool = False) -> List[str]:
     """
     Scrapes proxies from proxy-daily.com by mimicking the DataTables server-side API call.
     Handles pagination to fetch all available records.

@@ -95,7 +95,7 @@ def _get_port_map(html_content: str, session: requests.Session, verbose: bool) -
         if verbose: print(f"[ERROR] PremProxy: Failed to get port map: {e}", flush=True)
         return {}
 
-def scrape_from_premproxy(verbose: bool = True) -> List[str]:
+def scrape_from_premproxy(verbose: bool = False) -> List[str]:
     """
     Scrapes proxies from premproxy.com.
     """

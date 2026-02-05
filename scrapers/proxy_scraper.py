@@ -2,7 +2,7 @@
 import re
 import json
 import time
-from typing import List, Dict, Union, Tuple, Set, Callable, Optional
+from typing import List, Dict, Union, Tuple, Set, Callable, Optional, Any
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.parse import urlparse, urljoin
 from urllib.robotparser import RobotFileParser
@@ -103,7 +103,7 @@ class RobotsTxtChecker:
         if rp is None: return True
         return rp.can_fetch(user_agent, url)
 
-def _recursive_json_search_and_extract(data: any, proxies_found: set):
+def _recursive_json_search_and_extract(data: Any, proxies_found: Set[str]) -> None:
     if isinstance(data, dict):
         for key in ['address', 'proxy', 'addr', 'ip_port']:
             proxy_str = data.get(key)

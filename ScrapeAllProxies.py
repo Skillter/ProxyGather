@@ -207,11 +207,11 @@ def run_scraper_pipeline(
     if args.only is not None and not args.only:
         list_available_scrapers(args)
         # If this is called from a thread (ProxyGather), we shouldn't kill the process, just return
-        return []
+        return [], {}
 
     if args.exclude is not None and not args.exclude:
         list_available_scrapers(args)
-        return []
+        return [], {}
 
     # Only show disclaimer if we are not in compliant mode AND we are actually about to run logic (not just listing sources)
     # Legal Disclaimer

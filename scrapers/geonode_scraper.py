@@ -17,14 +17,14 @@ HEADERS = {
 
 def scrape_from_geonode_api(verbose: bool = False, compliant_mode: bool = True) -> List[str]:
     """
-    Fetches all proxies from the Geonode API by handling pagination.
+    Fetches proxies from the Geonode API by handling pagination.
 
-    It iterates through pages until the API returns no more proxies, with
-    a polite delay between each request.
+    It iterates through pages until the API returns no more proxies or
+    the page limit is reached, with a polite delay between each request.
 
     Args:
         verbose: If True, prints detailed status messages.
-        compliant_mode: If False (aggressive mode), limits pagination to page 8.
+        compliant_mode: Not used, kept for compatibility.
 
     Returns:
         A list of unique proxy strings in 'ip:port' format.
@@ -34,7 +34,7 @@ def scrape_from_geonode_api(verbose: bool = False, compliant_mode: bool = True) 
 
     all_proxies = set()
     page = 1
-    max_page = None if compliant_mode else 8
+    max_page = 2
 
     while True:
         # Define parameters for the API request
@@ -75,10 +75,10 @@ def scrape_from_geonode_api(verbose: bool = False, compliant_mode: bool = True) 
             # Prepare for the next iteration
             page += 1
 
-            # Stop if we've reached the max page limit (non-compliant mode)
-            if max_page is not None and page > max_page:
+            # Stop if we've reached the max page limit
+            if page > max_page:
                 if verbose:
-                    print(f"[INFO]   ... Reached page limit ({max_page}) in aggressive mode. Stopping.", flush=True)
+                    print(f"[INFO]   ... Reached page limit ({max_page}). Stopping.", flush=True)
                 break
 
             # --- Rate-limiting logic ---

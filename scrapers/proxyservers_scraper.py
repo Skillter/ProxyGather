@@ -46,7 +46,7 @@ def _decode_port(encoded_hex: str, key: str) -> str:
     except Exception:
         return ""
 
-def scrape_from_proxyservers(verbose: bool = True) -> List[str]:
+def scrape_from_proxyservers(verbose: bool = False) -> List[str]:
     """
     Scrapes proxies from proxyservers.pro.
     Extracts the 'chash' key from the page and uses it to XOR decode the hex-encoded ports.

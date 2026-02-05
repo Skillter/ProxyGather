@@ -103,7 +103,7 @@ class JSStringParser:
             try:
                 if not re.match(r'^[\d\s+\-*/().]+$', math_expr): return 0
                 return int(eval(math_expr, {"__builtins__":{}}))
-            except:
+            except Exception:
                 return 0
 
     def _apply_method(self, obj: str, method: str, args: list) -> str:
@@ -138,7 +138,7 @@ def _deobfuscate_ip(js_code: str) -> str:
     except Exception:
         return ""
 
-def scrape_from_proxynova(verbose: bool = True) -> List[str]:
+def scrape_from_proxynova(verbose: bool = False) -> List[str]:
     """
     Scrapes proxies from proxynova.com by parsing the HTML and executing 
     the JavaScript string obfuscation logic in Python.

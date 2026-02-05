@@ -131,7 +131,7 @@ def run_checker_pipeline(args, input_queue: Optional[queue.Queue] = None, result
 
     with termination_context(callbacks=[shutdown_executor]):
         try:
-            print(f"[INFO] Public IP: {checker.ip}")
+            print(f"[INFO] Public IP: {checker.ip}", flush=True)
             print(f"--- Checking with {args.threads} workers, {timeout}s timeout ---", flush=True)
 
             pending_list = list(initial_proxies)

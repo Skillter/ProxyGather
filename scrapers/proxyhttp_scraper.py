@@ -51,7 +51,7 @@ def _deobfuscate_variables(script_content: str) -> Dict[str, int]:
 
     return variables
 
-def scrape_from_proxyhttp(verbose: bool = True) -> List[str]:
+def scrape_from_proxyhttp(verbose: bool = False) -> List[str]:
     """
     Scrapes and de-obfuscates proxies from the main page and all paginated
     lists of proxyhttp.net.

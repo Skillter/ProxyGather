@@ -49,7 +49,7 @@ def is_url_allowed(url: str) -> bool:
             return False
             
         return True
-    except:
+    except Exception:
         return False
 
 def convert_to_jsdelivr_url(url: str) -> str:

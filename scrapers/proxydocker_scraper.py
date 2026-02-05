@@ -23,7 +23,7 @@ HEADERS = {
     'Referer': 'https://www.proxydocker.com/'
 }
 
-def scrape_from_proxydocker(verbose: bool = True) -> List[str]:
+def scrape_from_proxydocker(verbose: bool = False) -> List[str]:
     """
     Scrapes proxies from proxydocker.com by first establishing a session via their
     captcha check endpoint, extracting a CSRF token, and then paginating through

@@ -22,7 +22,7 @@ BASE_DELAY_SECONDS = 0.3
 RANDOM_DELAY_RANGE = (0.1, 0.4)
 
 
-def scrape_checkerproxy_archive(verbose: bool = True) -> List[str]:
+def scrape_checkerproxy_archive(verbose: bool = False) -> List[str]:
     """
     Scrapes all available proxy lists from the checkerproxy.net API archive.
 
