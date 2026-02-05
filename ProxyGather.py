@@ -30,7 +30,7 @@ def get_source_identifier(url: str, scraper_name: str) -> str:
         netloc = urlparse(url).netloc
         if netloc.startswith("www."): netloc = netloc[4:]
         return netloc
-    except:
+    except Exception:
         return scraper_name
 
 def handle_pre_checks(args):
@@ -121,8 +121,11 @@ def cmd_run(args):
         additional_proxies = load_proxies_from_patterns(args.checker_input)
         for proxy in additional_proxies:
             proxy_queue.put(proxy)
+            # Track these proxies as coming from 'checker-input' source
+            proxy_to_sources[proxy].add('checker-input')
             additional_proxies_loaded += 1
         if additional_proxies_loaded > 0:
+            stats['checker-input']['scraped'] = additional_proxies_loaded
             print(f"[INFO] Loaded {additional_proxies_loaded} additional proxies from checker-input files", flush=True)
 
     def on_proxy_scraped(scraper_name, source_detail, proxies_found):
@@ -182,7 +185,7 @@ def cmd_run(args):
         print(f"{source[:38]:<40} | {data['scraped']:<10} | {data['working']:<10}")
     
     unique_scraped = len(proxy_to_sources)
-    unique_working = sum(1 for w in checked_cache.values() if w)
+    unique_working = sum(1 for proxy, is_working in checked_cache.items() if is_working)
     
     print("-" * 60)
     print(f"{'TOTAL (Unique)':<40} | {unique_scraped:<10} | {unique_working:<10}")
