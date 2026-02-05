@@ -7,29 +7,13 @@ Additionally the scraper runs every 30 minutes on its own via GitHub Actions, en
 If you find this project useful, **please consider giving it a star ⭐** or share it by the word of mouth. Those things help a lot. thanks.
 
 ### Index
-- [What Makes This Project Different?](#so-what-makes-this-project-different-from-other-proxy-scrapers)
 - [Live Proxy Lists](#live-proxy-lists)
 - [Notice](#Notice)
 - [Installation](#installation)
 - [Advanced Usage](#advanced-usage)
 - [Adding Your Own Sites](#adding-your-own-sites)
+- [What Makes This Project Different?](#so-what-makes-this-project-different-from-other-proxy-scrapers)
 - [Contributions](#contributions)
-
-
-## So what makes this project different from other proxy scrapers?
-
-*   **Advanced Anti-Bot Evasion**: This isn't just a simple script. It includes dedicated logic for websites that use advanced anti-bot measures like session validation, Recaptcha fingerprinting or even required account registration.
-It can parse JavaScript-obfuscated IPs, decode Base64-encoded proxies, handle paginated API calls, and in cases where it's required, an automated browser ([SeleniumBase](https://github.com/seleniumbase/SeleniumBase)) to bypass the detection and unlock exclusive proxies that other tools can't reach.
-
-*   **A Checker That's Actually Smart**: Most proxy checkers just see if a port is open. That's not good enough. A proxy can be "alive" but useless or even malicious. This engine's validator is more sophisticated.
-    *   **Detects Hijacking**: It sends a request to a trusted third-party 'judge'. If a proxy returns some weird ad page or incorrect content instead of the real response, it's immediately flagged as a potential **hijack** and discarded. This is a common issue with free proxies that this checker actively prevents.
-    *   **Identifies Password Walls**: If a proxy requires a username and password (sending a `407` status), it’s correctly identified and discarded.
-    *   **Weeds Out Misconfigurations**: The checker looks for sensible, stable connections. If a proxy connects but then immediately times out or returns nonsensical errors, it's dropped. This cleans up the final list by removing thousands of unstable or poorly configured proxies.
-
-The result is a cleaner, far more reliable list of proxies you can actually use, not just a list of open ports.
-
-*   **Automated Fresh List**: Thanks to GitHub Actions, the entire process of scraping, checking, and committing the results is automated every 30 minutes. You can simply grab the fresh working proxies from a link to the raw file.
-*   **Easily add more sources**: Easily add your own targets to the `sites-to-get-proxies-from.txt` file, for the sites that don't use obfuscation.
 
 ## Live Proxy Lists
 
@@ -59,13 +43,10 @@ Getting up and running is fast and simple. *Tested on Python 3.12.9*
 
 2.  **Run It**
 
-    Execute the scripts. Default settings make it work out-of-box.
+    Execute the script. Default settings make it work out-of-box.
     The results are in the same folder.
     ```bash
-    python ScrapeAllProxies.py
-    ```
-    ```bash
-    python CheckProxies.py
+    python ProxyGather.py run
     ```
 
 ## Advanced Usage
@@ -74,34 +55,66 @@ For more control, you can use these command-line arguments.
 
 ### Scraping Proxies
 ```bash
-python ScrapeAllProxies.py --output proxies/scraped.txt --threads 75 --exclude Webshare ProxyDB --remove-dead-links
+python ProxyGather.py scrape --output proxies/scraped.txt --scraper-threads 75 --exclude Webshare ProxyDB --remove-dead-links
 ```
 
 #### Arguments:
 
 *   `--output`: Specify the output file for the scraped proxies. (Default: `scraped-proxies.txt`)
-*   `--threads`: Number of concurrent threads to use for the general scrapers. (Default: 50)
+*   `--scraper-threads`: Number of concurrent threads to use for the general scrapers. (Default: 50)
+*   `--automation-threads`: Number of concurrent threads for browser automation scrapers. (Default: 3)
 *   `--only`: Run only specific scrapers. For example: `--only Geonode ProxyDB`
 *   `--exclude`: Run all scrapers except for specific ones. For example: `--exclude Webshare`
 *   `-v`, `--verbose`: Enable detailed logging for what's being scraped.
 *   `--remove-dead-links`: Automatically remove URLs from `sites-to-get-proxies-from.txt` that yield no proxies.
+*   `--compliant`: Run in compliant mode (respects robots.txt, no anti-bot bypass).
+*   `--use-browser-automation`: Enable browser automation scrapers (Hide.mn, OpenProxyList, Spys.one).
+*   `-y`, `--yes`: Auto-accept the legal disclaimer.
 
-To see a list of all available scrapers, run: `python ScrapeAllProxies.py --only`
+To see a list of all available scrapers, run: `python ProxyGather.py scrape --only`
+
+#### Available Sources:
+*   **Websites** - URLs from `sites-to-get-proxies-from.txt`
+*   **Discover** - URLs discovered from website lists in `sites-to-get-sources-from.txt`
+*   **Advanced.name**
+*   **CheckerProxy**
+*   **Geonode**
+*   **GoLogin**
+*   **Hide.mn** (Pass `--use-browser-automation` to enable)
+*   **OpenProxyList** (Pass `--use-browser-automation` to enable)
+*   **PremProxy**
+*   **Proxy-Daily**
+*   **ProxyDB**
+*   **ProxyDocker**
+*   **ProxyHttp**
+*   **ProxyList.org**
+*   **ProxyNova**
+*   **ProxyScrape**
+*   **ProxyServers.pro**
+*   **Spys.one** (Pass `--use-browser-automation` to enable)
 
 ### Checking Proxies
 
 ```bash
-python CheckProxies.py --input proxies/scraped.txt --output proxies/working.txt --threads 2000 --timeout 5s --verbose --prepend-protocol
+python ProxyGather.py check --input proxies/scraped.txt --output proxies/working.txt --checker-threads 2000 --timeout 5s --verbose --prepend-protocol
 ```
 
 #### Arguments:
 
 *   `--input`: The input file(s) containing the proxies to check. You can use wildcards. (Default: `scraped-proxies.txt`)
 *   `--output`: The base name for the output files. The script will create separate files for each protocol (e.g. `working-http.txt`, `working-socks5.txt`).
-*   `--threads`: The number of concurrent threads to use for checking. (Default: 500)
+*   `--checker-threads`: The number of concurrent threads to use for checking. (Default: 500)
 *   `--timeout`: The timeout for each proxy check (e.g. `8s`, `500ms`). (Default: `6s`)
 *   `-v`, `--verbose`: Enable detailed logging
 *   `--prepend-protocol`: Add the protocol prefix (e.g. "http://", "socks5://") to the start of each line
+
+### Unified Mode (Scrape + Check)
+
+```bash
+python ProxyGather.py run --scraper-threads 50 --checker-threads 500 --timeout 6s
+```
+
+This runs both scraping and checking in one command. It accepts arguments from both scrape and check modes.
 
 ## Adding Your Own Sites
 
@@ -125,6 +138,21 @@ https://api.proxies.com/get|{"page": "{page}", "limit": 100}|{"Authorization": "
 # No payload, but custom headers
 https://api.proxies.com/get||{"Authorization": "Bearer my-token"}
 ```
+
+## So what makes this project different from other proxy scrapers?
+
+*   **Advanced Anti-Bot Evasion**: This isn't just a simple script. It includes dedicated logic for websites that use advanced anti-bot measures like session validation, Recaptcha fingerprinting or even required account registration.
+It can parse JavaScript-obfuscated IPs, decode Base64-encoded proxies, handle paginated API calls, and in cases where it's required, an automated browser ([SeleniumBase](https://github.com/seleniumbase/SeleniumBase)) to bypass the detection and unlock exclusive proxies that other tools can't reach.
+
+*   **A Checker That's Actually Smart**: Most proxy checkers just see if a port is open. That's not good enough. A proxy can be "alive" but useless or even malicious. This engine's validator is more sophisticated.
+    *   **Detects Hijacking**: It sends a request to a trusted third-party 'judge'. If a proxy returns some weird ad page or incorrect content instead of the real response, it's immediately flagged as a potential **hijack** and discarded. This is a common issue with free proxies that this checker actively prevents.
+    *   **Identifies Password Walls**: If a proxy requires a username and password (sending a `407` status), it's correctly identified and discarded.
+    *   **Weeds Out Misconfigurations**: The checker looks for sensible, stable connections. If a proxy connects but then immediately times out or returns nonsensical errors, it's dropped. This cleans up the final list by removing thousands of unstable or poorly configured proxies.
+
+The result is a cleaner, far more reliable list of proxies you can actually use, not just a list of open ports.
+
+*   **Automated Fresh List**: Thanks to GitHub Actions, the entire process of scraping, checking, and committing the results is automated every 30 minutes. You can simply grab the fresh working proxies from a link to the raw file.
+*   **Easily add more sources**: Easily add your own targets to the `sites-to-get-proxies-from.txt` file, for the sites that don't use obfuscation.
 
 ## Contributions
 
