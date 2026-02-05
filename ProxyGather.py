@@ -61,7 +61,33 @@ def cmd_scrape(args):
     if not hasattr(args, 'threads'):
         args.threads = args.scraper_threads
 
-    run_scraper_pipeline(args, skip_disclaimer=True)
+    final_proxies, results = run_scraper_pipeline(args, skip_disclaimer=True)
+    
+    # Display summary by source
+    if results:
+        print("\n" + "="*60)
+        print(f"{'Source':<45} | {'Proxies':<10}")
+        print("-" * 60)
+        
+        # Calculate per-source counts
+        source_counts = {}
+        for source, proxies in results.items():
+            if source == 'Websites':
+                # For Websites scraper, we don't have per-URL breakdown in results
+                # so just use the total count
+                source_counts[source] = len(proxies) if proxies else 0
+            else:
+                source_counts[source] = len(proxies) if proxies else 0
+        
+        # Sort by count descending
+        sorted_stats = sorted(source_counts.items(), key=lambda x: x[1], reverse=True)
+        for source, count in sorted_stats:
+            display_source = source[:43] if len(source) > 43 else source
+            print(f"{display_source:<45} | {count:<10}")
+        
+        print("-" * 60)
+        print(f"{'TOTAL (Unique)':<45} | {len(final_proxies):<10}")
+        print("="*60)
 
 def cmd_check(args):
     print("=== ProxyGather Checker Mode ===")

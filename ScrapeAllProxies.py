@@ -421,7 +421,7 @@ def run_scraper_pipeline(
         except Exception as e:
             print(f"[ERROR] Failed to update sites file: {e}", flush=True)
 
-    return final_proxies
+    return final_proxies, results
 
 def main():
     parser = argparse.ArgumentParser(description="Multi-source proxy scraper.")
@@ -439,7 +439,7 @@ def main():
     group.add_argument('--exclude', '--except', nargs='*')
 
     args = parser.parse_args()
-    proxies = run_scraper_pipeline(args)
+    proxies, results = run_scraper_pipeline(args)
     if proxies:
         print(f"\n[SUMMARY] Total unique proxies scraped: {len(proxies)}", flush=True)
 
