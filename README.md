@@ -114,7 +114,41 @@ python ProxyGather.py check --input proxies/scraped.txt --output proxies/working
 python ProxyGather.py run --scraper-threads 50 --checker-threads 500 --timeout 6s
 ```
 
-This runs both scraping and checking in one command. It accepts arguments from both scrape and check modes.
+This runs both scraping and checking in one command with a streaming pipeline. Scraped proxies are immediately fed to the checker for validation.
+
+#### Arguments:
+
+*   `--scraper-output`: Output file for scraped proxies. (Default: `scraped-proxies-{timestamp}.txt`)
+*   `--checker-input`: Additional proxy file(s) to check alongside scraped proxies. Useful for re-checking existing lists.
+*   `--checker-output`: Base name for working proxy output files. (Default: `working-proxies-{timestamp}`)
+*   `--scraper-threads`: Number of concurrent threads for scraping. (Default: 50)
+*   `--checker-threads`: Number of concurrent threads for checking. (Default: 500)
+*   `--timeout`: Timeout for each proxy check (e.g. `8s`, `500ms`). (Default: `6s`)
+*   `--automation-threads`: Concurrent threads for browser automation scrapers. (Default: 3)
+*   `--only`: Run only specific scrapers. (See `scrape --only` for list)
+*   `--exclude`: Exclude specific scrapers.
+*   `--compliant`: Run in compliant mode (respects robots.txt, no anti-bot bypass).
+*   `--use-browser-automation`: Enable browser automation scrapers.
+*   `-y`, `--yes`: Auto-accept the legal disclaimer.
+*   `-v`, `--verbose`: Enable detailed logging.
+
+#### Example: Check Existing Proxies + Scrape New Ones
+
+```bash
+python ProxyGather.py run \
+  -y \
+  --checker-input proxies/existing-proxies.txt \
+  --checker-output proxies/working-proxies \
+  --scraper-output proxies/scraped-proxies.txt \
+  --checker-threads 1300 \
+  --timeout 3s
+```
+
+This will:
+1. Load proxies from `proxies/existing-proxies.txt` into the checker
+2. Scrape new proxies from all sources
+3. Check all proxies (existing + scraped)
+4. Save working proxies to `proxies/working-proxies-all.txt` (and `-http.txt`, `-socks4.txt`, `-socks5.txt`)
 
 ## Adding Your Own Sites
 

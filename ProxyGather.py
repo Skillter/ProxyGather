@@ -102,15 +102,11 @@ def cmd_run(args):
     # --- Filename Logic ---
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     
-    # 1. Scraper output: always scraped-proxies-{timestamp}.txt
-    scraped_file = f"scraped-proxies-{timestamp}.txt"
+    # 1. Scraper output: use --scraper-output if provided, otherwise timestamped default
+    scraped_file = args.scraper_output if args.scraper_output else f"scraped-proxies-{timestamp}.txt"
     
-    # 2. Checker output: if user didn't provide --output, we set it to None 
-    #    so CheckProxies generates 'working-proxies-{timestamp}.txt'.
-    #    If user provided any --output value (even 'working-proxies.txt'), we use it as-is.
-    if args.output is None:
-        pass  # Keep as None to let CheckProxies generate timestamp
-    # else: use the provided value as-is 
+    # 2. Checker output: use --checker-output if provided, otherwise None for timestamped default
+    args.output = args.checker_output  # CheckProxies uses args.output
     
     proxy_queue = queue.Queue()
     stats = defaultdict(lambda: {'scraped': 0, 'working': 0})
@@ -118,16 +114,16 @@ def cmd_run(args):
     checked_cache: Dict[str, bool] = {}
     stats_lock = threading.Lock()
     
-    # Load additional proxies from --input files if provided
+    # Load additional proxies from --checker-input files if provided
     additional_proxies_loaded = 0
-    if hasattr(args, 'input') and args.input:
+    if args.checker_input:
         from CheckProxies import load_proxies_from_patterns
-        additional_proxies = load_proxies_from_patterns(args.input)
+        additional_proxies = load_proxies_from_patterns(args.checker_input)
         for proxy in additional_proxies:
             proxy_queue.put(proxy)
             additional_proxies_loaded += 1
         if additional_proxies_loaded > 0:
-            print(f"[INFO] Loaded {additional_proxies_loaded} additional proxies from input files", flush=True)
+            print(f"[INFO] Loaded {additional_proxies_loaded} additional proxies from checker-input files", flush=True)
 
     def on_proxy_scraped(scraper_name, source_detail, proxies_found):
         source_id = get_source_identifier(source_detail, scraper_name)
@@ -225,10 +221,10 @@ def main():
     add_checker_args(p_check)
 
     p_run = subparsers.add_parser('run')
-    # Default for checker output in run mode: if not provided, generates timestamp
-    # If provided (even 'working-proxies.txt'), uses the value as-is
-    p_run.add_argument('--output', default=None)
-    p_run.add_argument('--input', nargs='+', help='Additional proxy files to check alongside scraped proxies')
+    # Output configuration: separate arguments for scraper and checker
+    p_run.add_argument('--scraper-output', help='Output file for scraped proxies (default: scraped-proxies-{timestamp}.txt)')
+    p_run.add_argument('--checker-input', nargs='+', help='Additional proxy files to check alongside scraped proxies')
+    p_run.add_argument('--checker-output', help='Output file for working proxies (default: working-proxies-{timestamp})')
     p_run.add_argument('--scraper-threads', type=int, default=50)
     p_run.add_argument('--checker-threads', dest='threads', type=int, default=500)
     
