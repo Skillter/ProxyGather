@@ -2,7 +2,7 @@
 import re
 import json
 import time
-from typing import List, Dict, Union, Tuple
+from typing import List, Dict, Union, Tuple, Set, Callable, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.parse import urlparse, urljoin
 from urllib.robotparser import RobotFileParser
@@ -96,16 +96,14 @@ class RobotsTxtChecker:
                 rp = RobotFileParser()
                 robots_url = urljoin(domain, '/robots.txt')
                 try:
-                    rp.set_url(robots_url)
+                    rp.set_url(urljoin(domain, '/robots.txt'))
                     rp.read()
                     self.cache[domain] = rp
                 except Exception:
                     self.cache[domain] = None
 
         rp = self.cache[domain]
-        if rp is None:
-            return True
-
+        if rp is None: return True
         return rp.can_fetch(user_agent, url)
 
 def _recursive_json_search_and_extract(data: any, proxies_found: set):
@@ -141,33 +139,39 @@ def extract_proxies_from_content(content: str, verbose: bool = False) -> set:
         _recursive_json_search_and_extract(json_data, proxies_found)
         if proxies_found and verbose: print("[DEBUG]  ... Found proxies via smart JSON parsing.", flush=True)
     except (json.JSONDecodeError, TypeError): pass
-    if not proxies_found:
-        data_config_pattern = r'data-config="(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{1,5})"'
-        matches = re.findall(data_config_pattern, content)
-        if matches:
-            proxies_found.update(matches)
-            if verbose: print("[DEBUG]  ... Found proxies via 'data-config' attribute parsing.", flush=True)
-    if not proxies_found:
-        for pattern in PATTERNS:
-            try:
-                matches = re.findall(pattern, content)
-                for match in matches:
-                    if isinstance(match, tuple) and len(match) >= 2:
-                        proxies_found.add(f'{match[0]}:{match[1]}')
-                    elif isinstance(match, str) and ":" in match:
-                        proxies_found.add(match)
-            except re.error: continue
-        if verbose and proxies_found: print("[DEBUG]  ... Found proxies via general regex fallback.", flush=True)
+    
+    # 2. Try data-config attributes (common in some proxy lists)
+    data_config_pattern = r'data-config="(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{1,5})"'
+    matches = re.findall(data_config_pattern, content)
+    if matches:
+        proxies_found.update(matches)
+        if verbose: print("[DEBUG]  ... Found proxies via 'data-config' attribute parsing.", flush=True)
+
+    # 3. Always try Regex fallbacks (Aggressive extraction)
+    # We do NOT check 'if not proxies_found' here anymore, ensuring we catch everything.
+    regex_found = set()
+    for pattern in PATTERNS:
+        try:
+            matches = re.findall(pattern, content)
+            for match in matches:
+                if isinstance(match, tuple) and len(match) >= 2:
+                    regex_found.add(f'{match[0]}:{match[1]}')
+                elif isinstance(match, str) and ":" in match:
+                    regex_found.add(match)
+        except re.error: continue
+    
+    if regex_found:
+        proxies_found.update(regex_found)
+        if verbose and regex_found: print("[DEBUG]  ... Found proxies via general regex fallback.", flush=True)
+
     return proxies_found
 
 def _fetch_and_extract_single(url: str, payload: Union[Dict, None], headers: Union[Dict, None], verbose: bool, rate_limiter: DomainRateLimiter = None, robots_checker: RobotsTxtChecker = None) -> Tuple[set, bool]:
     merged_headers = DEFAULT_HEADERS.copy()
-    if headers:
-        merged_headers.update(headers)
+    if headers: merged_headers.update(headers)
 
     if robots_checker and not robots_checker.is_allowed(url, merged_headers.get('User-Agent', '*')):
-        if verbose:
-            print(f"[INFO] Skipping {url} - blocked by robots.txt", flush=True)
+        if verbose: print(f"[INFO] Skipping {url} - blocked by robots.txt", flush=True)
         return set(), False
 
     if rate_limiter:
@@ -182,35 +186,29 @@ def _fetch_and_extract_single(url: str, payload: Union[Dict, None], headers: Uni
         return extract_proxies_from_content(response.text, verbose=verbose), True
     except requests.exceptions.HTTPError as e:
         if e.response and e.response.status_code in [403, 429, 503]:
-            if verbose:
-                print(f"[RETRY] HTTP {e.response.status_code} for {url} (will retry)", flush=True)
+            if verbose: print(f"[RETRY] HTTP {e.response.status_code} for {url} (will retry)", flush=True)
             return set(), False
-        if verbose:
-            print(f"[ERROR] HTTP {e.response.status_code if e.response else 'error'} for {url}", flush=True)
+        if verbose: print(f"[ERROR] HTTP {e.response.status_code if e.response else 'error'} for {url}", flush=True)
         return set(), True
     except requests.exceptions.RequestException as e:
         # Check for fatal errors to avoid futile retries
         error_str = str(e).lower()
-        fatal_indicators = [
-            "name resolution failure", 
-            "name service not known", 
-            "getaddrinfo failed",
-            "ssl error",
-            "certificate verify failed"
-        ]
-        
+        fatal_indicators = ["name resolution failure", "name service not known", "getaddrinfo failed", "ssl error", "certificate verify failed"]
         if any(indicator in error_str for indicator in fatal_indicators):
-             if verbose:
-                # Log as error but return True to indicate "done/fatal", stopping retries
-                print(f"[ERROR] Fatal connection error for {url}: {e} (skipping retries)", flush=True)
+             if verbose: print(f"[ERROR] Fatal connection error for {url}: {e} (skipping retries)", flush=True)
              return set(), True
-
-        if verbose:
-            print(f"[RETRY] Request failed for {url}: {e} (will retry)", flush=True)
+        if verbose: print(f"[RETRY] Request failed for {url}: {e} (will retry)", flush=True)
         return set(), False
 
-def _scrape_paginated_url(base_url: str, base_payload: Union[Dict, None], base_headers: Union[Dict, None], verbose: bool, rate_limiter: DomainRateLimiter, robots_checker: RobotsTxtChecker = None) -> Tuple[set, bool]:
-    """Scrapes a single paginated URL and returns (proxies, found_any)."""
+def _scrape_paginated_url(
+    base_url: str, 
+    base_payload: Union[Dict, None], 
+    base_headers: Union[Dict, None], 
+    verbose: bool, 
+    rate_limiter: DomainRateLimiter, 
+    robots_checker: RobotsTxtChecker = None,
+    callback: Optional[Callable[[str, Set[str]], None]] = None
+) -> Tuple[set, bool]:
     proxies = set()
     page_num = 1
     found_any = False
@@ -238,6 +236,12 @@ def _scrape_paginated_url(base_url: str, base_payload: Union[Dict, None], base_h
 
         if newly_scraped:
             found_any = True
+            if callback:
+                try:
+                    callback(current_url, newly_scraped)
+                except Exception as e:
+                    if verbose: print(f"[WARN] Callback failed for {current_url}: {e}", flush=True)
+
             initial_count = len(proxies)
             proxies.update(newly_scraped)
 
@@ -259,7 +263,8 @@ def scrape_proxies(
     scrape_targets: List[Tuple[str, Union[Dict, None], Union[Dict, None]]],
     verbose: bool = False,
     max_workers: int = 10,
-    respect_robots_txt: bool = False
+    respect_robots_txt: bool = False,
+    callback: Optional[Callable[[str, Set[str]], None]] = None
 ) -> Tuple[List[str], List[str]]:
     """
     Scrapes proxies concurrently with domain-based rate limiting.
@@ -298,8 +303,7 @@ def scrape_proxies(
                     break
 
                 for future in as_completed(list(future_to_target.keys())):
-                    if should_terminate():
-                        break
+                    if should_terminate(): break
 
                     url, payload, headers = future_to_target.pop(future)
                     key = (url, json.dumps(payload) if payload else None, json.dumps(headers) if headers else None)
@@ -310,18 +314,21 @@ def scrape_proxies(
                         if success:
                             if proxies_from_url:
                                 if verbose: print(f"[INFO] General Scraper: Found {len(proxies_from_url)} proxies on {url}", flush=True)
+                                if callback:
+                                    try:
+                                        callback(url, proxies_from_url)
+                                    except Exception as e:
+                                        if verbose: print(f"[WARN] Callback failed for {url}: {e}", flush=True)
                                 all_proxies.update(proxies_from_url)
                                 successful_urls.add(url)
                         else:
                             retry_attempts[key] += 1
                             if retry_attempts[key] < max_retries:
-                                if verbose:
-                                    print(f"[INFO] Retrying {url} (attempt {retry_attempts[key] + 1}/{max_retries})", flush=True)
+                                if verbose: print(f"[INFO] Retrying {url} (attempt {retry_attempts[key] + 1}/{max_retries})", flush=True)
                                 new_future = executor.submit(_fetch_and_extract_single, url, payload, headers, verbose, rate_limiter, robots_checker)
                                 future_to_target[new_future] = (url, payload, headers)
                             else:
-                                if verbose:
-                                    print(f"[ERROR] Max retries reached for {url}", flush=True)
+                                if verbose: print(f"[ERROR] Max retries reached for {url}", flush=True)
                     except Exception as exc:
                         if verbose: print(f"[ERROR] An exception occurred while processing {url}: {exc}", flush=True)
 
@@ -329,17 +336,16 @@ def scrape_proxies(
         if should_terminate():
             if verbose: print("[INFO] General Scraper: Termination requested, skipping paginated URL scraping", flush=True)
         else:
-            print(f"[INFO] General Scraper: Found {len(paginated_targets)} paginated URLs. Scraping concurrently with domain rate limiting...", flush=True)
+            print(f"[INFO] General Scraper: Found {len(paginated_targets)} paginated URLs. Scraping concurrently...", flush=True)
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 future_to_url = {
-                    executor.submit(_scrape_paginated_url, base_url, base_payload, base_headers, verbose, rate_limiter, robots_checker): base_url
+                    executor.submit(_scrape_paginated_url, base_url, base_payload, base_headers, verbose, rate_limiter, robots_checker, callback): base_url
                     for base_url, base_payload, base_headers in paginated_targets
                 }
                 for future in as_completed(future_to_url):
                     if should_terminate():
                         if verbose: print("[INFO] General Scraper: Termination requested, stopping paginated URL scraping", flush=True)
                         break
-
                     base_url = future_to_url[future]
                     try:
                         proxies_from_url, found_any = future.result()
