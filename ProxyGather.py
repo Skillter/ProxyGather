@@ -105,17 +105,29 @@ def cmd_run(args):
     # 1. Scraper output: always scraped-proxies-{timestamp}.txt
     scraped_file = f"scraped-proxies-{timestamp}.txt"
     
-    # 2. Checker output: if user didn't change default 'working-proxies.txt', 
-    #    we set it to None so CheckProxies generates 'working-proxies-{timestamp}.txt'.
-    #    If user provided a specific name (e.g. --output my-proxies.txt), we use that.
-    if args.output == 'working-proxies.txt':
-        args.output = None 
+    # 2. Checker output: if user didn't provide --output, we set it to None 
+    #    so CheckProxies generates 'working-proxies-{timestamp}.txt'.
+    #    If user provided any --output value (even 'working-proxies.txt'), we use it as-is.
+    if args.output is None:
+        pass  # Keep as None to let CheckProxies generate timestamp
+    # else: use the provided value as-is 
     
     proxy_queue = queue.Queue()
     stats = defaultdict(lambda: {'scraped': 0, 'working': 0})
     proxy_to_sources: Dict[str, Set[str]] = defaultdict(set)
     checked_cache: Dict[str, bool] = {}
     stats_lock = threading.Lock()
+    
+    # Load additional proxies from --input files if provided
+    additional_proxies_loaded = 0
+    if hasattr(args, 'input') and args.input:
+        from CheckProxies import load_proxies_from_patterns
+        additional_proxies = load_proxies_from_patterns(args.input)
+        for proxy in additional_proxies:
+            proxy_queue.put(proxy)
+            additional_proxies_loaded += 1
+        if additional_proxies_loaded > 0:
+            print(f"[INFO] Loaded {additional_proxies_loaded} additional proxies from input files", flush=True)
 
     def on_proxy_scraped(scraper_name, source_detail, proxies_found):
         source_id = get_source_identifier(source_detail, scraper_name)
@@ -153,6 +165,8 @@ def cmd_run(args):
     def scraper_worker():
         s_args = ScraperArgsWrapper(args, scraped_file)
         run_scraper_pipeline(s_args, proxy_found_callback=on_proxy_scraped, handle_signals=False, skip_disclaimer=True)
+        # Put sentinel value to signal scraper is done
+        # If we loaded additional proxies, we need to account for that
         proxy_queue.put(None)
 
     with termination_context():
@@ -211,8 +225,10 @@ def main():
     add_checker_args(p_check)
 
     p_run = subparsers.add_parser('run')
-    # Default for checker output in run mode is working-proxies.txt (which acts as a placeholder flag)
-    p_run.add_argument('--output', default='working-proxies.txt')
+    # Default for checker output in run mode: if not provided, generates timestamp
+    # If provided (even 'working-proxies.txt'), uses the value as-is
+    p_run.add_argument('--output', default=None)
+    p_run.add_argument('--input', nargs='+', help='Additional proxy files to check alongside scraped proxies')
     p_run.add_argument('--scraper-threads', type=int, default=50)
     p_run.add_argument('--checker-threads', dest='threads', type=int, default=500)
     

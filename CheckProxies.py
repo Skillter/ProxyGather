@@ -15,7 +15,7 @@ from helper.termination import termination_context, should_terminate
 
 SAVE_BATCH_SIZE = 25
 
-def _save_working_proxies(proxy_data, prepend_protocol, output_base, is_final=False):
+def _save_working_proxies(proxy_data, prepend_protocol, output_base, is_final=False) -> None:
     """Saves the working proxies, creating the output directory if needed."""
     base, ext = os.path.splitext(output_base)
     if not ext: ext = ".txt"
