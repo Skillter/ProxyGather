@@ -188,6 +188,14 @@ The result is a cleaner, far more reliable list of proxies you can actually use,
 *   **Automated Fresh List**: Thanks to GitHub Actions, the entire process of scraping, checking, and committing the results is automated every 30 minutes. You can simply grab the fresh working proxies from a link to the raw file.
 *   **Easily add more sources**: Easily add your own targets to the `sites-to-get-proxies-from.txt` file, for the sites that don't use obfuscation.
 
+## Star History
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=skillter/ProxyGather&type=date&theme=dark&legend=top-left" />
+  <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=skillter/ProxyGather&type=date&legend=top-left" />
+  <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=skillter/ProxyGather&type=date&legend=top-left" />
+</picture>
+
 ## Contributions
 
 Contributions are what makes the open-source community thrive. Any contributions you make are **warmly welcomed**! Whether it's suggesting a new proxy source, adding a new scraper, improving the checker or fixing a bug, feel free to open an issue or send a pull request.
