@@ -17,8 +17,12 @@ SAVE_BATCH_SIZE = 25
 
 def _save_working_proxies(proxy_data, prepend_protocol, output_base, is_final=False) -> None:
     """Saves the working proxies, creating the output directory if needed."""
-    base, ext = os.path.splitext(output_base)
-    if not ext: ext = ".txt"
+    # Split off the extension (e.g. ".txt") to get the base name
+    # If the output_base has no extension, we treat the whole thing as the base
+    base = output_base
+    ext = ".txt"
+    if output_base.endswith(('.txt', '.csv', '.json', '.log')):
+        base, ext = os.path.splitext(output_base)
     directory = os.path.dirname(base)
     if directory and not os.path.exists(directory): os.makedirs(directory)
 
