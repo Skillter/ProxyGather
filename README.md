@@ -200,3 +200,7 @@ The result is a cleaner, far more reliable list of proxies you can actually use,
 
 Contributions are what makes the open-source community thrive. Any contributions you make are **warmly welcomed**! Whether it's suggesting a new proxy source, adding a new scraper, improving the checker or fixing a bug, feel free to open an issue or send a pull request.
 *Note: The project has been developed and tested on Python 3.12.9*
+
+## VALIDATE YOUR PROXIES ONLINE
+
+After gathering proxies with socker, validate them instantly at **[proxychecker.dev](https://proxychecker.dev)** — paste your SOCKS4/SOCKS5 list and get alive/dead status, latency, exit country, ISP, and datacenter-vs-residential type with no install required. Free for up to 50 proxies per run.
