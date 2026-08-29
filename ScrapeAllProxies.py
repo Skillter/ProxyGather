@@ -266,7 +266,8 @@ def run_scraper_pipeline(
                     netloc = urlparse(conv_url).netloc.replace("www.", "")
                     if conv_url not in existing_urls and netloc not in existing_domains:
                         filtered_urls.append(d_url)
-                except: pass
+                except Exception:
+                    pass  # Skip URLs that fail to parse
             discovered_urls = filtered_urls
 
         if not discovered_urls: return []
